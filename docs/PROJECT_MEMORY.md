@@ -1,5 +1,12 @@
 # Mineradio Project Memory
 
+### 2026-06-25 - P0 Installer In-Place Repair Rule
+
+- User requirement: all users must receive the installer/uninstaller safety fix with zero risk to unrelated files.
+- Files: `build/installer.nsh`, `docs/INSTALLER_STYLE.md`, `CHANGELOG.md`.
+- Implementation: the full setup reads existing HKCU/HKLM Mineradio install locations and may adopt them in place only when the registered path is already a dedicated `...\Mineradio` directory and contains Mineradio files or `.mineradio-install-root`; it removes only the legacy `Uninstall Mineradio.exe` single file before writing the new safe uninstaller.
+- Do not regress: never run the old uninstaller, never adopt mixed parent folders or drive roots, never use quick patch JSON as the only fix path for installer/uninstaller bugs, and never restore recursive install-root deletion.
+
 这个文件用于解决新开 Codex 对话时“失忆”的问题。每次用户明确说“保留”“喜欢”“这个很好”“记住”“保存一下”等表达时，要把关键结论追加到这里。
 
 ## Stable Project Facts
@@ -167,6 +174,34 @@
 ```
 
 ## Memory Entries
+
+### 2026-06-25 - 安装器路径与卸载防误删 P0 规则
+
+- 用户认可/要求保留：安装器默认优先 `D:\Mineradio`，D 不存在再 E/F/.../Z；只有电脑确实没有任何 D-Z 盘时，才放行 `C:\Mineradio`。用户手动选 C 盘时也必须按这个规则拦截。
+- 涉及文件：`build/installer.nsh`、`docs/INSTALLER_STYLE.md`、`CHANGELOG.md`、`package.json`、`package-lock.json`。
+- 关键参数/实现：安装路径强制规范化到独立 `Mineradio` 子目录；非空且非 Mineradio-owned 的目录阻止安装；只有 `.mineradio-install-root` 标记才算 Mineradio-owned；新安装器跳过没有该标记的旧卸载器，只删除旧 `Uninstall Mineradio.exe` 单文件并清理卸载注册表；新卸载器只删除已知 Mineradio/Electron 顶层文件，`resources`/`locales` 等子目录只做非递归空目录删除。
+- 禁止回退或改坏的点：绝对不要恢复 `RMDir /r $INSTDIR` 删除安装根目录；不要递归删除安装目录下的应用子目录；不要默认回到 `AppData\Local\Programs` 或 C 盘；不要允许用户把 Mineradio 直接装进已有杂项目录后由卸载器递归清空。
+
+### 2026-06-25 - 多音乐接口热插拔方案与 QQ-only 登录 Bug
+
+- 用户认可/要求保留：多接口扩展先作为工程方案纳入工作区，后续新增酷狗、汽水、Apple Music、Spotify 前先按方案推进；QQ 音乐只登录时弹“未登录，仅试听”的问题必须作为前置 P0 修复。
+- 涉及文件：`docs/MUSIC_PROVIDER_PLUGIN_PLAN.md`、后续预计涉及 `server.js`、`public/index.html`、`desktop/main.js`、`desktop/preload.js`。
+- 关键参数/实现：先修 QQ-only 登录播放链，再抽 `providers/` 注册表；Provider 分 `direct-url` 与 `sdk-player` 两类，Apple Music/Spotify 不承诺直链播放，酷狗/汽水先做能力验证。
+- 禁止回退或改坏的点：不要让网易云登录态成为 QQ 或其它 Provider 的播放前置条件；不要把新增源继续硬塞成更多分支；不要承诺所有平台都能像网易云/QQ 一样返回可直接播放 URL。
+
+### 2026-06-25 - Ctrl 缩放卡住临时处理与 Bug 计划
+
+- 用户认可/要求保留：用户反馈 `Ctrl+-` 缩小窗口/页面后无法通过 `Ctrl++` 放大回来，重装无效；该问题需要进入工作区更新 Bug 计划，并先提供临时恢复方案。
+- 涉及文件：`docs/WORKSPACE_UPDATE_BUG_PLAN.md`、后续预计涉及 `desktop/main.js`。
+- 关键参数/实现：本机已观察到 `%APPDATA%\Mineradio\Preferences` 内 `partition.per_host_zoom_levels` 记录 `127.0.0.1: -1.0`；临时优先尝试 `Ctrl+0`，兜底清理 Preferences 中的 `per_host_zoom_levels`，不要删除整个 `%APPDATA%\Mineradio`。
+- 禁止回退或改坏的点：正式修复必须覆盖 `Ctrl+=`、`Ctrl+Shift+=`、`Ctrl+NumpadAdd`、`Ctrl+NumpadSubtract` 和 `Ctrl+0`，并处理旧用户数据残留；不要要求用户通过重装解决。
+
+### 2026-06-25 - 壁纸模式、Wallpaper Engine 与透明玻璃模式方案记录
+
+- 用户认可/要求保留：当前讨论形成一份后续工程方案；未来新对话处理壁纸模式、Wallpaper Engine 联动、主窗口透明穿透、MyDockFinder 避让、可拖动隐藏控制台时，先读取专门方案文档，不要只沿用当前实验态壁纸代码。
+- 涉及文件：`docs/WALLPAPER_ENGINE_DESKTOP_FUSION_PLAN.md`、后续预计涉及 `desktop/main.js`、`desktop/preload.js`、`desktop/overlay-preload.js`、`public/index.html`、`public/wallpaper.html`。
+- 关键参数/实现：方案拆成普通模式、透明玻璃模式、MR 原生桌面壁纸模式、Wallpaper Engine Web 壁纸联动模式；优先建议先做透明玻璃模式 MVP，再重构 WorkerW 壁纸视觉层 + 独立控制台浮层，然后做 MyDockFinder 自动探测/手动安全区，最后做 Wallpaper Engine 轻联动与本地桥接深联动。
+- 禁止回退或改坏的点：不要直接解锁当前 `wallpaperMode` 实验开关；不要让透明空白区域挡住桌面图标、任务栏或 MyDockFinder；不要把播放器黄金版 SVG 玻璃质感改成普通毛玻璃；不要把 Wallpaper Engine 当作 Electron 容器，需输出独立 Web 壁纸包。
 
 ### 2026-06-24 - 1.1.0 纯净安装发布边界
 - 用户认可/要求保留：`v1.1.0` 从当前可信源码重新打包为纯净安装版并发布到 GitHub；旧 `v1.0.10` 及更早 `.exe` 安装包需要标记隔离，不再作为推荐安装来源。

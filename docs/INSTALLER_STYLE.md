@@ -1,3 +1,8 @@
+# 2026-06-25 P0 Installer Safety Notes
+
+- Full setup adoption rule: the installer may adopt an existing registered install only when the registered path itself is a dedicated `...\Mineradio` directory and contains Mineradio files or `.mineradio-install-root`; mixed parent folders and drive roots must stay blocked/quarantined.
+- Quick patch rule: installer/uninstaller safety bugs cannot be fixed by a quick patch JSON alone, because the Windows uninstaller and install registry must be replaced by the full NSIS setup.
+
 # Mineradio Installer Style
 
 2026-06-22 用户确认保留当前安装包格式。以后发布安装包，默认沿用这套样式和流程，除非用户明确要求重做。
@@ -39,3 +44,12 @@
 - 安装目录页输入框显示 `D:\Mineradio`。
 - `浏览...` 按钮能弹出中文文件夹选择窗口。
 - 验证时不要点 `安装`，确认后取消退出。
+
+## 2026-06-25 安装安全补充
+
+- 默认安装路径从 `D:\Mineradio` 开始按 D-Z 顺序选择第一个存在的盘；只有电脑不存在任何 D-Z 盘时，才允许默认落到 `C:\Mineradio`。
+- 用户手动选择目录时，安装器必须强制落到独立 `Mineradio` 子文件夹；若 D-Z 盘存在，手动选择 C 盘也要阻止。
+- 非空且无法识别为 Mineradio 的目录必须阻止安装，避免卸载阶段删除用户其它文件。
+- 新安装器写入 `.mineradio-install-root` 标记；新卸载器必须先验证路径和标记/主程序/卸载器，再进入卸载。
+- 新卸载器禁止使用 `RMDir /r $INSTDIR` 删除整个安装根目录，也禁止递归删除 `resources`、`locales` 等应用子目录；只能删除 Mineradio/Electron 顶层已知文件，最后用非递归 `RMDir "$INSTDIR"` 尝试移除空目录。
+- 安装新版本时，若检测到旧版本没有 `.mineradio-install-root` 安全标记，必须跳过旧卸载器，只删除旧目录中的 `Uninstall Mineradio.exe` 单文件并清理卸载注册表，避免触发历史安装包的整目录递归删除逻辑。
