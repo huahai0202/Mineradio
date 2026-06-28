@@ -18,6 +18,7 @@ win-unpacked/
 # User data and private state
 .cookie
 .qq-cookie
+.lx-source-config.json
 updates/
 backups/
 *.log

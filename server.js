@@ -53,6 +53,7 @@ const tls = require('tls');
 const { once } = require('events');
 const { fileURLToPath } = require('url');
 const { analyzePodcastDjStream, analyzePodcastDjIntro } = require('./dj-analyzer');
+const lxSource = require('./lx-source');
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -3553,6 +3554,98 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       console.error('[QQSongComments]', err);
       sendJSON(res, { provider: 'qq', error: err.message, comments: [] }, 500);
+    }
+    return;
+  }
+
+  // ---------- 落雪音乐 (LX Music) 音源 ----------
+  // 落雪音乐适配: 支持两种模式
+  //   1) script 模式: 加载 LX 自定义音源脚本 (globalThis.lx 沙盒)
+  //   2) api 模式: 对接 lx-music-api-server 系聚合 HTTP API (GET /url/{source}/{id}/{quality})
+  // 搜索沿用网易云 (LX 脚本规范本身只强制 musicUrl, 搜索/歌词由 Mineradio 既有接口兜底)
+  if (pn === '/api/lx/status') {
+    sendJSON(res, lxSource.getStatus());
+    return;
+  }
+
+  if (pn === '/api/lx/config') {
+    if (req.method === 'GET') {
+      sendJSON(res, lxSource.maskConfigForClient());
+      return;
+    }
+    if (req.method === 'POST') {
+      try {
+        const body = await readRequestBody(req);
+        const result = await lxSource.applyConfigUpdate(body || {});
+        sendJSON(res, result, result.ok ? 200 : 400);
+      } catch (err) {
+        console.error('[LXConfig]', err);
+        sendJSON(res, { ok: false, error: err.message, status: lxSource.getStatus() }, 500);
+      }
+      return;
+    }
+    sendJSON(res, { ok: false, error: 'METHOD_NOT_ALLOWED' }, 405);
+    return;
+  }
+
+  if (pn === '/api/lx/test') {
+    try {
+      const id = url.searchParams.get('id') || '';
+      const quality = url.searchParams.get('quality') || '320k';
+      const result = await lxSource.testSource({ id, quality });
+      sendJSON(res, result, result.ok ? 200 : 400);
+    } catch (err) {
+      console.error('[LXTest]', err);
+      sendJSON(res, { ok: false, error: err.message }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/lx/song/url') {
+    try {
+      const id = url.searchParams.get('id') || url.searchParams.get('songmid') || url.searchParams.get('mid') || '';
+      const provider = url.searchParams.get('provider') || url.searchParams.get('source') || 'netease';
+      const quality = url.searchParams.get('quality') || '';
+      const song = {
+        provider,
+        source: provider,
+        id,
+        songmid: id,
+        mid: id,
+        name: url.searchParams.get('name') || '',
+        artist: url.searchParams.get('artist') || '',
+      };
+      const resolved = await lxSource.resolveMusicUrl(song, quality);
+      sendJSON(res, {
+        provider: 'lx',
+        url: resolved.url,
+        playable: true,
+        trial: false,
+        level: resolved.quality,
+        quality: resolved.quality,
+        lxSource: resolved.source,
+        requestedQuality: quality || '',
+      });
+    } catch (err) {
+      console.error('[LXSongUrl]', err);
+      const status = lxSource.getStatus();
+      sendJSON(res, {
+        provider: 'lx',
+        url: '',
+        playable: false,
+        error: 'LX_URL_UNAVAILABLE',
+        message: err.message,
+        lxEnabled: status.enabled,
+        lxMode: status.mode,
+        lxReady: status.ready,
+        lxLastError: status.lastError,
+        restriction: {
+          provider: 'lx',
+          category: status.enabled ? 'url_unavailable' : 'login_required',
+          action: status.enabled ? 'switch_source' : 'configure',
+          message: err.message,
+        },
+      }, 500);
     }
     return;
   }

@@ -21,7 +21,7 @@ try {
 html,body{font-family:var(--font-sans);background:#000;color:#fff;overflow:hidden;height:100vh;width:100vw;user-select:none;-webkit-font-smoothing:antialiased}
 body.cursor-hidden,body.cursor-hidden *{cursor:none!important}
 html.desktop-shell-root,html.desktop-shell-root body{background:transparent}
-:root{--font-sans:"Noto Sans SC","PingFang SC","HarmonyOS Sans SC","Alibaba PuHuiTi","Inter",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;--font-mono:"JetBrains Mono","Geist Mono","SF Mono",ui-monospace,monospace;--fc-bg:#08090B;--fc-paper:#0E1014;--fc-ink:#E8ECEF;--fc-ink-2:#D2D7DC;--fc-muted:#8A9099;--fc-hair:#1A1D22;--fc-hair-2:#262A31;--fc-accent:#00F5D4;--fc-accent-hov:#00E0BE;--fc-accent-rgb:0,245,212;--fc-blue:#2442ff;--fc-warm:#f8f4ee;--chill-ink:#030608;--chill-deep:#061116;--chill-cyan:#8fe9ff;--chill-blue:#73a7ff;--chill-mint:#9cffdf;--chill-soft:rgba(214,248,255,.9);--champagne:#f4d28a;--champagne-deep:#9a6f2c;--home-accent:#00f5d4;--home-accent-rgb:0,245,212;--visual-tint:#9db8cf;--source-netease:#d95b67;--source-qq:#00F5D4;--source-local:#9db8cf}
+:root{--font-sans:"Noto Sans SC","PingFang SC","HarmonyOS Sans SC","Alibaba PuHuiTi","Inter",-apple-system,BlinkMacSystemFont,system-ui,sans-serif;--font-mono:"JetBrains Mono","Geist Mono","SF Mono",ui-monospace,monospace;--fc-bg:#08090B;--fc-paper:#0E1014;--fc-ink:#E8ECEF;--fc-ink-2:#D2D7DC;--fc-muted:#8A9099;--fc-hair:#1A1D22;--fc-hair-2:#262A31;--fc-accent:#00F5D4;--fc-accent-hov:#00E0BE;--fc-accent-rgb:0,245,212;--fc-blue:#2442ff;--fc-warm:#f8f4ee;--chill-ink:#030608;--chill-deep:#061116;--chill-cyan:#8fe9ff;--chill-blue:#73a7ff;--chill-mint:#9cffdf;--chill-soft:rgba(214,248,255,.9);--champagne:#f4d28a;--champagne-deep:#9a6f2c;--home-accent:#00f5d4;--home-accent-rgb:0,245,212;--visual-tint:#9db8cf;--source-netease:#d95b67;--source-qq:#00F5D4;--source-local:#9db8cf;--source-lx:#a78bfa}
 :root{--glass-bg:linear-gradient(112deg,rgba(72,74,76,.62),rgba(24,27,30,.70) 48%,rgba(8,12,14,.74));--glass-bg-focus:linear-gradient(112deg,rgba(88,91,92,.68),rgba(28,32,35,.76) 50%,rgba(8,13,15,.82));--glass-border:rgba(0,245,212,.30);--glass-border-soft:rgba(255,255,255,.095);--glass-shadow:0 22px 64px rgba(0,0,0,.30),0 0 34px rgba(0,245,212,.052),inset 0 1px 0 rgba(255,255,255,.16),inset 0 -24px 58px rgba(0,0,0,.16);--glass-shadow-focus:0 24px 72px rgba(0,0,0,.34),0 0 0 1px rgba(0,245,212,.13),0 0 42px rgba(0,245,212,.075),inset 0 1px 0 rgba(255,255,255,.20)}
 :root{--saved-panel-glass-bg:rgba(0,0,0,.10);--saved-panel-glass-filter:blur(12px) saturate(1.8) brightness(1.16);--saved-panel-glass-svg-filter:url(#mineradio-control-glass-filter) saturate(1);--saved-panel-glass-shadow:inset 0 0 2px 1px rgba(255,255,255,.35),inset 0 0 10px 4px rgba(255,255,255,.15),0 4px 16px rgba(17,17,26,.05),0 8px 24px rgba(17,17,26,.05),0 16px 56px rgba(17,17,26,.05),inset 0 4px 16px rgba(17,17,26,.05),inset 0 8px 24px rgba(17,17,26,.05),inset 0 16px 56px rgba(17,17,26,.05);--saved-panel-glass-radius:50px;--saved-button-glass-bg:rgba(0,0,0,.10);--saved-button-glass-filter:blur(12px) saturate(1.8) brightness(1.16);--saved-button-glass-svg-filter:url(#mineradio-control-glass-filter) saturate(1);--saved-button-glass-shadow:inset 0 0 2px 1px rgba(255,255,255,.34),inset 0 0 10px 4px rgba(255,255,255,.13),0 10px 30px rgba(0,0,0,.18);--saved-button-glass-hover-bg:rgba(255,255,255,.055);--saved-button-glass-hover-shadow:inset 0 0 2px 1px rgba(255,255,255,.42),inset 0 0 12px 5px rgba(255,255,255,.17),0 12px 34px rgba(0,0,0,.22),0 0 18px rgba(255,255,255,.06)}
 :root{--home-icon-color:#f4d28a;--home-icon-rgb:244,210,138;--visual-icon-color:#7fd8ff;--visual-icon-rgb:127,216,255}
@@ -196,8 +196,11 @@ body.empty-home-active.diy-mode #search-area:not(.has-results) #search-mode-tabs
 .tag-source{display:inline-flex;align-items:center;height:16px;padding:0 6px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.045);font-size:8.5px;font-weight:800;letter-spacing:.55px;line-height:1;flex-shrink:0}
 .tag-source.netease{color:#ffd8dd;border-color:rgba(217,91,103,.30);background:rgba(217,91,103,.075)}
 .tag-source.qq{color:#f0ffc8;border-color:rgba(191,214,107,.30);background:rgba(191,214,107,.075)}
+.tag-source.lx{color:#ede1ff;border-color:rgba(167,139,250,.30);background:rgba(167,139,250,.085)}
 .search-result.qq-source:hover{background:rgba(191,214,107,.052)}
 .search-result.netease-source:hover{background:rgba(217,91,103,.045)}
+.search-result.lx-source:hover{background:rgba(167,139,250,.058)}
+.account-source-dot.lx{background:var(--source-lx);color:var(--source-lx)}
 .podcast-result-head{display:flex;align-items:center;gap:10px;padding:11px 13px 9px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.025)}
 .podcast-result-head img{width:40px;height:40px;border-radius:7px;object-fit:cover;background:rgba(255,255,255,.05);flex-shrink:0}
 .podcast-back-btn{width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.045);color:rgba(255,255,255,.66);cursor:pointer;font-family:inherit;font-size:18px;line-height:1;display:flex;align-items:center;justify-content:center;transition:all .2s}
@@ -833,9 +836,36 @@ body.login-guide-active #login-guide-canvas{opacity:1}
 .account-provider-chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;margin-bottom:10px;border-radius:999px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.035);font-size:10.5px;letter-spacing:.5px;color:rgba(255,255,255,.58)}
 .account-provider-chip.netease{border-color:rgba(217,91,103,.26);color:#ffd7dc;background:rgba(217,91,103,.08)}
 .account-provider-chip.qq{border-color:rgba(191,214,107,.26);color:#f3ffd1;background:rgba(191,214,107,.08)}
+.account-provider-chip.lx{border-color:rgba(167,139,250,.26);color:#ede1ff;background:rgba(167,139,250,.08)}
 .account-modal-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
 .account-modal-actions .modal-btn{padding:8px 10px}
 .account-hint{margin-top:10px;font-size:11px;line-height:1.45;color:rgba(255,255,255,.38)}
+.lx-config-modal{max-width:520px;width:92vw;max-height:88vh;overflow:auto;display:flex;flex-direction:column;gap:12px}
+.lx-status-chip{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;padding:5px 11px;border-radius:999px;border:1px solid rgba(167,139,250,.28);background:rgba(167,139,250,.08);color:#ede1ff;font-size:11px;letter-spacing:.4px}
+.lx-status-chip.ok{border-color:rgba(126,226,168,.30);background:rgba(126,226,168,.08);color:#d8ffe6}
+.lx-status-chip.err{border-color:rgba(240,128,128,.30);background:rgba(240,128,128,.08);color:#ffe1e1}
+.lx-status-chip.warn{border-color:rgba(244,210,138,.30);background:rgba(244,210,138,.08);color:#fff0bf}
+.lx-field-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.lx-field-label{font-size:11.5px;color:rgba(255,255,255,.58);letter-spacing:.4px}
+.lx-toggle{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.86);cursor:pointer;user-select:none}
+.lx-toggle input{width:16px;height:16px;accent-color:#a78bfa;cursor:pointer}
+.lx-mode-tabs{display:inline-flex;gap:4px;padding:3px;border-radius:999px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08)}
+.lx-mode-tab{height:26px;padding:0 12px;border:0;border-radius:999px;background:transparent;color:rgba(255,255,255,.48);font-family:inherit;font-size:11px;font-weight:650;letter-spacing:.4px;cursor:pointer;transition:background .2s,color .2s}
+.lx-mode-tab:hover{color:rgba(255,255,255,.82)}
+.lx-mode-tab.active{color:#ede1ff;background:rgba(167,139,250,.16);box-shadow:inset 0 0 0 1px rgba(167,139,250,.28)}
+.lx-field-group{display:flex;flex-direction:column;gap:10px}
+.lx-field{display:flex;flex-direction:column;gap:5px;font-size:11.5px;color:rgba(255,255,255,.72);letter-spacing:.3px}
+.lx-field input,.lx-field textarea,.lx-field select{font-family:var(--font-sans);font-size:12.5px;color:#fff;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.10);border-radius:9px;padding:9px 11px;outline:none;transition:border-color .2s,background .2s}
+.lx-field input:focus,.lx-field textarea:focus,.lx-field select:focus{border-color:rgba(167,139,250,.38);background:rgba(167,139,250,.055)}
+.lx-field textarea{resize:vertical;min-height:96px;font-family:var(--font-mono);font-size:11px;line-height:1.5;white-space:pre}
+.lx-hint{font-size:10.5px;color:rgba(255,255,255,.38);line-height:1.5;letter-spacing:.2px}
+.lx-test-result{font-size:11.5px;line-height:1.5;padding:0;border-radius:8px;min-height:0;color:rgba(255,255,255,.6)}
+.lx-test-result.show{padding:9px 11px;min-height:18px}
+.lx-test-result.ok{color:#d8ffe6;background:rgba(126,226,168,.06);border:1px solid rgba(126,226,168,.22)}
+.lx-test-result.err{color:#ffe1e1;background:rgba(240,128,128,.06);border:1px solid rgba(240,128,128,.22)}
+.lx-config-modal .btn-row{justify-content:flex-end}
+.lx-entry-btn{margin-top:10px;width:100%;padding:8px 12px;font-size:11.5px;color:rgba(255,255,255,.62);border-color:rgba(167,139,250,.22);background:rgba(167,139,250,.05)}
+.lx-entry-btn:hover{color:#ede1ff;border-color:rgba(167,139,250,.38);background:rgba(167,139,250,.10)}
 .modal .btn-row{display:flex;gap:10px;justify-content:center;margin-top:16px}
 .dual-login-modal .btn-row{flex-wrap:wrap}
 .modal-btn{padding:8px 20px;font-size:12.5px;border-radius:8px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:#fff;cursor:pointer;letter-spacing:.5px;transition:all .2s;font-family:inherit}
@@ -1910,6 +1940,7 @@ html.control-glass-svg-ok #visual-guide-btn:hover{
       <button id="search-mode-song" class="active" type="button" onclick="setSearchMode('song')" aria-selected="true">All</button>
       <button id="search-mode-netease" type="button" onclick="setSearchMode('netease')" aria-selected="false">NE</button>
       <button id="search-mode-qq" type="button" onclick="setSearchMode('qq')" aria-selected="false">QQ</button>
+      <button id="search-mode-lx" type="button" onclick="setSearchMode('lx')" aria-selected="false" title="落雪音乐源 (LX Music)">LX</button>
       <button id="search-mode-podcast" type="button" onclick="setSearchMode('podcast')" aria-selected="false">Podcast</button>
     </div>
     <div id="search-results"></div>
@@ -2519,6 +2550,66 @@ html.control-glass-svg-ok #visual-guide-btn:hover{
     <div class="btn-row">
       <button class="modal-btn" onclick="closeUserModal()">关闭</button>
       <button id="account-logout-btn" class="modal-btn primary" onclick="logoutActiveAccount()">退出当前平台</button>
+    </div>
+    <button id="open-lx-config-btn" class="modal-btn lx-entry-btn" onclick="openLxConfigModal()">落雪音乐源 (LX) 设置…</button>
+  </div>
+</div>
+
+<!-- 落雪音乐源 (LX) 配置模态 -->
+<div id="lx-config-modal" class="modal-mask">
+  <div class="modal lx-config-modal">
+    <h2>落雪音乐源 (LX)</h2>
+    <div id="lx-status-chip" class="lx-status-chip">读取中…</div>
+    <div class="lx-field-row">
+      <label class="lx-toggle">
+        <input id="lx-enabled" type="checkbox">
+        <span>启用落雪音乐源</span>
+      </label>
+    </div>
+    <div class="lx-field-row">
+      <span class="lx-field-label">模式</span>
+      <div class="lx-mode-tabs">
+        <button id="lx-mode-api" class="lx-mode-tab active" type="button" onclick="setLxMode('api')">聚合 API</button>
+        <button id="lx-mode-script" class="lx-mode-tab" type="button" onclick="setLxMode('script')">自定义脚本</button>
+      </div>
+    </div>
+    <div id="lx-api-fields" class="lx-field-group">
+      <label class="lx-field">
+        <span>API URL</span>
+        <input id="lx-api-url" type="text" placeholder="https://your-lx-api-server.example.com" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="lx-field">
+        <span>X-Request-Key (可选)</span>
+        <input id="lx-api-key" type="password" placeholder="留空表示无 key" autocomplete="off" spellcheck="false">
+      </label>
+      <div class="lx-hint">兼容 lx-music-api-server 系: GET {API_URL}/url/{source}/{songId}/{quality}, Header X-Request-Key</div>
+    </div>
+    <div id="lx-script-fields" class="lx-field-group" style="display:none">
+      <label class="lx-field">
+        <span>脚本 URL (远程 .js, 可选)</span>
+        <input id="lx-script-url" type="text" placeholder="https://raw.githubusercontent.com/.../latest.js" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="lx-field">
+        <span>或直接粘贴脚本代码 (优先于 URL)</span>
+        <textarea id="lx-script-code" rows="6" placeholder="/*! &#10; * @name 我的聚合源 &#10; * @version 1.0.0 &#10; */ &#10;const { EVENT_NAMES, on, send, request } = globalThis.lx &#10;..." spellcheck="false"></textarea>
+      </label>
+      <div class="lx-hint">兼容 LX Music 自定义音源脚本规范 (globalThis.lx + inited/request 事件), 可填 pdone/lx-music-source 等仓库的 raw URL</div>
+    </div>
+    <label class="lx-field">
+      <span>默认源 (当歌曲未带 provider 时使用)</span>
+      <select id="lx-default-source">
+        <option value="wy">网易云 (wy)</option>
+        <option value="tx">QQ 音乐 (tx)</option>
+        <option value="kw">酷我 (kw)</option>
+        <option value="kg">酷狗 (kg)</option>
+        <option value="mg">咪咕 (mg)</option>
+      </select>
+    </label>
+    <div id="lx-test-result" class="lx-test-result"></div>
+    <div class="btn-row">
+      <button class="modal-btn" onclick="closeLxConfigModal()">取消</button>
+      <button class="modal-btn" onclick="testLxSource()">测试</button>
+      <button id="lx-save-btn" class="modal-btn primary" onclick="saveLxConfig()">保存</button>
     </div>
   </div>
 </div>
@@ -10308,14 +10399,22 @@ function normalizeBeatPrefetchState(state) {
 
 async function fetchBeatPrefetchAudioUrl(song) {
   if (!song) return null;
-  var isQQ = songProviderKey(song) === 'qq';
+  var providerKey = songProviderKey(song);
+  var isQQ = providerKey === 'qq';
+  var isLx = providerKey === 'lx';
   var requestedQuality = normalizePlaybackQuality(playbackQuality);
-  if (!isQQ && requestedQuality === 'jymaster' && !hasProviderSvip('netease', loginStatus)) requestedQuality = 'hires';
+  if (!isQQ && !isLx && requestedQuality === 'jymaster' && !hasProviderSvip('netease', loginStatus)) requestedQuality = 'hires';
   if (isQQ && qqPlaybackQualityCeiling && (requestedQuality === 'jymaster' || requestedQuality === 'hires' || requestedQuality === 'lossless')) requestedQuality = qqPlaybackQualityCeiling;
   var qualityParam = '&quality=' + encodeURIComponent(requestedQuality);
-  var data = isQQ
-    ? await apiJson('/api/qq/song/url?mid=' + encodeURIComponent(song.mid || song.songmid || song.id || '') + '&mediaMid=' + encodeURIComponent(song.mediaMid || song.media_mid || '') + qualityParam)
-    : await apiJson('/api/song/url?id=' + encodeURIComponent(song.id) + qualityParam);
+  var data;
+  if (isQQ) {
+    data = await apiJson('/api/qq/song/url?mid=' + encodeURIComponent(song.mid || song.songmid || song.id || '') + '&mediaMid=' + encodeURIComponent(song.mediaMid || song.media_mid || '') + qualityParam);
+  } else if (isLx) {
+    var lxSongId = song.mid || song.songmid || song.id || '';
+    data = await apiJson('/api/lx/song/url?provider=netease&id=' + encodeURIComponent(lxSongId) + qualityParam);
+  } else {
+    data = await apiJson('/api/song/url?id=' + encodeURIComponent(song.id) + qualityParam);
+  }
   if (!data || !data.url || data.trial) return null;
   return '/api/audio?url=' + encodeURIComponent(data.url);
 }
@@ -15196,7 +15295,7 @@ function canReloadCurrentTrackForQuality() {
   if (!audio || !audio.src || audio.paused || audio.ended) return false;
   var song = playQueue[currentIdx];
   if (!song || song.type === 'local' || song.source === 'local') return false;
-  return songProviderKey(song) === 'netease' || songProviderKey(song) === 'qq';
+  return songProviderKey(song) === 'netease' || songProviderKey(song) === 'qq' || songProviderKey(song) === 'lx';
 }
 function applyPlaybackQualityToCurrentTrack(nextQuality) {
   var label = playbackQualityLabel(nextQuality || playbackQuality);
@@ -17267,6 +17366,7 @@ function updateSearchModeTabs() {
   var songBtn = document.getElementById('search-mode-song');
   var neteaseBtn = document.getElementById('search-mode-netease');
   var qqBtn = document.getElementById('search-mode-qq');
+  var lxBtn = document.getElementById('search-mode-lx');
   var podcastBtn = document.getElementById('search-mode-podcast');
   if (songBtn) {
     songBtn.classList.toggle('active', searchMode === 'song');
@@ -17280,6 +17380,10 @@ function updateSearchModeTabs() {
     qqBtn.classList.toggle('active', searchMode === 'qq');
     qqBtn.setAttribute('aria-selected', searchMode === 'qq' ? 'true' : 'false');
   }
+  if (lxBtn) {
+    lxBtn.classList.toggle('active', searchMode === 'lx');
+    lxBtn.setAttribute('aria-selected', searchMode === 'lx' ? 'true' : 'false');
+  }
   if (podcastBtn) {
     podcastBtn.classList.toggle('active', searchMode === 'podcast');
     podcastBtn.setAttribute('aria-selected', searchMode === 'podcast' ? 'true' : 'false');
@@ -17287,12 +17391,12 @@ function updateSearchModeTabs() {
   if ($input) {
     $input.placeholder = searchMode === 'podcast'
       ? '搜索播客、电台...'
-      : (searchMode === 'qq' ? '搜索 QQ 音乐...' : (searchMode === 'netease' ? '搜索网易云音乐...' : '搜索歌曲、歌手...'));
+      : (searchMode === 'qq' ? '搜索 QQ 音乐...' : (searchMode === 'netease' ? '搜索网易云音乐...' : (searchMode === 'lx' ? '搜索歌曲 (落雪音乐源取链)...' : '搜索歌曲、歌手...')));
   }
   requestAnimationFrame(updateSearchPillGlassDisplacementMap);
 }
 function setSearchMode(mode) {
-  mode = (mode === 'podcast' || mode === 'netease' || mode === 'qq') ? mode : 'song';
+  mode = (mode === 'podcast' || mode === 'netease' || mode === 'qq' || mode === 'lx') ? mode : 'song';
   if (searchMode === mode) return;
   searchMode = mode;
   updateSearchModeTabs();
@@ -17507,11 +17611,12 @@ updateSearchModeTabs();
 
 function songProviderKey(song) {
   if (song && (song.provider === 'qq' || song.source === 'qq' || song.type === 'qq')) return 'qq';
+  if (song && (song.provider === 'lx' || song.source === 'lx' || song.type === 'lx')) return 'lx';
   return 'netease';
 }
 function songSourceTagHtml(song) {
   var key = songProviderKey(song);
-  var label = key === 'qq' ? 'QQ' : 'NE';
+  var label = key === 'qq' ? 'QQ' : (key === 'lx' ? 'LX' : 'NE');
   return '<span class="tag-source ' + key + '">' + label + '</span>';
 }
 function searchResultMetaText(song) {
@@ -17519,6 +17624,7 @@ function searchResultMetaText(song) {
   if (song.artist) bits.push(song.artist);
   if (song.album) bits.push(song.album);
   if (songProviderKey(song) === 'qq' && !song.playable) bits.push('QQ 播放需会话/授权');
+  if (songProviderKey(song) === 'lx') bits.push('落雪源取链');
   return bits.join('  ·  ') || songSourceLabel(song);
 }
 function searchResultMetaHtml(song, index) {
@@ -17653,6 +17759,23 @@ async function fetchMusicSearchResults(q, mode) {
   if (mode === 'netease') {
     var neOnly = await apiJson('/api/search?keywords=' + encodeURIComponent(q) + '&limit=18');
     return mergeSongSearchResults(neOnly.songs || [], [], 18, q);
+  }
+  if (mode === 'lx') {
+    // 落雪音乐源 (LX): LX 脚本规范本身只强制 musicUrl, 不提供搜索
+    // 这里沿用网易云搜索结果, 把歌曲 tag 成 lx provider, 播放时走 /api/lx/song/url
+    var neForLx = await apiJson('/api/search?keywords=' + encodeURIComponent(q) + '&limit=18');
+    var lxSongs = (neForLx.songs || []).map(function(s){
+      var cloned = cloneSong(s);
+      cloned.provider = 'lx';
+      cloned.source = 'lx';
+      cloned.type = 'lx';
+      cloned.lxOriginProvider = cloned.lxOriginProvider || 'netease';
+      // 保留原始 netease id 作为 LX 脚本的 songmid (wy 源)
+      cloned.lxSource = 'wy';
+      cloned.playable = true;
+      return cloned;
+    });
+    return mergeSongSearchResults(lxSongs, [], 18, q);
   }
   var result = await Promise.allSettled([
     apiJson('/api/search?keywords=' + encodeURIComponent(q) + '&limit=14'),
@@ -18045,6 +18168,7 @@ function bindVolumeControls() {
 function queueItemKey(song) {
   if (!song) return '';
   if (song.provider === 'qq' || song.source === 'qq' || song.type === 'qq') return 'qq:' + (song.mid || song.songmid || song.id || (song.name + '|' + song.artist));
+  if (song.provider === 'lx' || song.source === 'lx' || song.type === 'lx') return 'lx:' + (song.mid || song.songmid || song.id || (song.name + '|' + song.artist));
   if (song.type === 'podcast' && song.programId) return 'podcast:' + song.programId;
   if (song.localKey) return 'local:' + song.localKey;
   if (song.id != null && song.id !== '') return 'song:' + song.id;
@@ -18133,10 +18257,17 @@ function playSearchResult(i) {
 var firstPlayDone = false;
 
 function playbackProviderLabel(song) {
-  return songProviderKey(song) === 'qq' ? 'QQ 音乐' : '网易云';
+  var key = songProviderKey(song);
+  if (key === 'qq') return 'QQ 音乐';
+  if (key === 'lx') return '落雪音乐';
+  return '网易云';
 }
 function playbackLoginProvider(song) {
-  return songProviderKey(song) === 'qq' ? 'qq' : 'netease';
+  // LX 源不需要登录, 播放失败时不要弹出登录窗; 兜底返回 netease 仅用于歌词等附加流程
+  var key = songProviderKey(song);
+  if (key === 'qq') return 'qq';
+  if (key === 'lx') return 'lx';
+  return 'netease';
 }
 function playbackRestrictionMessage(song, data) {
   data = data || {};
@@ -18229,7 +18360,10 @@ function isSameTitleArtist(source, candidate) {
   return a.some(function(name){ return b.indexOf(name) >= 0; });
 }
 function alternatePlaybackProvider(song) {
-  return songProviderKey(song) === 'qq' ? 'netease' : 'qq';
+  var key = songProviderKey(song);
+  // LX 源不可播时, 优先回退到原平台 (lxOriginProvider) 或网易云
+  if (key === 'lx') return song.lxOriginProvider === 'qq' ? 'qq' : 'netease';
+  return key === 'qq' ? 'netease' : 'qq';
 }
 async function searchAlternatePlatformSong(song) {
   var target = alternatePlaybackProvider(song);
@@ -18315,6 +18449,15 @@ function handlePlaybackUnavailable(song, data) {
   var restriction = (data && data.restriction) || {};
   var category = (data && data.reason) || restriction.category || '';
   showToast(playbackRestrictionMessage(song, data));
+  // LX 源不需要登录, 失败时引导打开 LX 配置而不是登录窗
+  if (category === 'login_required' && provider === 'lx') {
+    setTimeout(function(){
+      var modal = document.getElementById('lx-config-modal');
+      if (!modal || modal.classList.contains('show')) return;
+      openLxConfigModal();
+    }, 520);
+    return;
+  }
   if (category === 'login_required') {
     setTimeout(function(){
       var modal = document.getElementById('login-modal');
@@ -18462,15 +18605,24 @@ async function playQueueAt(idx, opts) {
   try {
     markPlayPhase('source-url');
     var isQQPlayback = songProviderKey(song) === 'qq';
+    var isLxPlayback = songProviderKey(song) === 'lx';
     var requestedQuality = normalizePlaybackQuality(opts.qualityOverride || playbackQuality);
-    if (!isQQPlayback && requestedQuality === 'jymaster' && !hasProviderSvip('netease', loginStatus)) requestedQuality = 'hires';
+    if (!isQQPlayback && !isLxPlayback && requestedQuality === 'jymaster' && !hasProviderSvip('netease', loginStatus)) requestedQuality = 'hires';
     if (isQQPlayback && qqPlaybackQualityCeiling && (requestedQuality === 'jymaster' || requestedQuality === 'hires' || requestedQuality === 'lossless')) {
       requestedQuality = qqPlaybackQualityCeiling;
     }
     var qualityParam = '&quality=' + encodeURIComponent(requestedQuality);
-    var data = isQQPlayback
-      ? await apiJson('/api/qq/song/url?mid=' + encodeURIComponent(song.mid || song.songmid || song.id || '') + '&mediaMid=' + encodeURIComponent(song.mediaMid || song.media_mid || '') + qualityParam)
-      : await apiJson('/api/song/url?id=' + song.id + qualityParam);
+    var data;
+    if (isQQPlayback) {
+      data = await apiJson('/api/qq/song/url?mid=' + encodeURIComponent(song.mid || song.songmid || song.id || '') + '&mediaMid=' + encodeURIComponent(song.mediaMid || song.media_mid || '') + qualityParam);
+    } else if (isLxPlayback) {
+      // 落雪音乐源: 把歌曲的 netease id 作为 songmid 透传给 /api/lx/song/url
+      // LX 服务端会把 provider=netease 映射成 wy 源 (LX 脚本规范)
+      var lxSongId = song.mid || song.songmid || song.id || '';
+      data = await apiJson('/api/lx/song/url?provider=netease&id=' + encodeURIComponent(lxSongId) + qualityParam + '&name=' + encodeURIComponent(song.name || '') + '&artist=' + encodeURIComponent(song.artist || ''));
+    } else {
+      data = await apiJson('/api/song/url?id=' + song.id + qualityParam);
+    }
     if (token !== trackSwitchToken) return;
     if (!data.url) {
       if (isQQPlayback && await retryQQPlaybackWithCompatibleQuality(song, idx, token, opts, data, requestedQuality)) return;
@@ -19023,6 +19175,10 @@ async function fetchLyric(songOrId, token) {
       var mid = song.mid || song.songmid || song.id || '';
       var qqId = song.qqId || (/^\d+$/.test(String(song.id || '')) ? song.id : '');
       endpoint = '/api/qq/lyric?mid=' + encodeURIComponent(mid) + '&id=' + encodeURIComponent(qqId);
+    } else if (provider === 'lx') {
+      // LX 源: LX 脚本规范不强制提供歌词, 这里用歌曲保留的 netease id 走网易云歌词接口兜底
+      var lxSongId = song.mid || song.songmid || song.id || '';
+      endpoint = '/api/lyric?id=' + encodeURIComponent(lxSongId);
     } else {
       var songId = song ? song.id : songOrId;
       endpoint = '/api/lyric?id=' + encodeURIComponent(songId);
@@ -23782,6 +23938,153 @@ function openProviderLogin(provider) {
   closeUserModal();
   loginProvider = provider;
   showLoginModal({ provider: provider });
+}
+
+// ---------- 落雪音乐 (LX) 配置弹窗 ----------
+function setLxMode(mode) {
+  mode = mode === 'script' ? 'script' : 'api';
+  var apiTab = document.getElementById('lx-mode-api');
+  var scriptTab = document.getElementById('lx-mode-script');
+  var apiFields = document.getElementById('lx-api-fields');
+  var scriptFields = document.getElementById('lx-script-fields');
+  if (apiTab) apiTab.classList.toggle('active', mode === 'api');
+  if (scriptTab) scriptTab.classList.toggle('active', mode === 'script');
+  if (apiFields) apiFields.style.display = mode === 'api' ? '' : 'none';
+  if (scriptFields) scriptFields.style.display = mode === 'script' ? '' : 'none';
+}
+
+function applyLxStatusToChip(status) {
+  var chip = document.getElementById('lx-status-chip');
+  if (!chip) return;
+  chip.classList.remove('ok', 'err', 'warn');
+  if (!status) { chip.textContent = '读取中…'; return; }
+  if (!status.enabled) {
+    chip.classList.add('warn');
+    chip.textContent = '未启用';
+  } else if (status.ready) {
+    chip.classList.add('ok');
+    var label = status.mode === 'script' ? ('脚本就绪' + (status.scriptName ? ' · ' + status.scriptName : '')) : 'API 就绪';
+    chip.textContent = label;
+  } else {
+    chip.classList.add('err');
+    chip.textContent = status.lastError ? ('未就绪: ' + status.lastError) : '未就绪';
+  }
+}
+
+function setLxTestResult(text, kind) {
+  var result = document.getElementById('lx-test-result');
+  if (!result) return;
+  result.classList.remove('ok', 'err');
+  if (!text) { result.textContent = ''; result.classList.remove('show'); return; }
+  result.textContent = text;
+  result.classList.add('show');
+  if (kind === 'ok') result.classList.add('ok');
+  else if (kind === 'err') result.classList.add('err');
+}
+
+function collectLxConfigFromForm() {
+  var enabled = document.getElementById('lx-enabled');
+  var apiUrl = document.getElementById('lx-api-url');
+  var apiKey = document.getElementById('lx-api-key');
+  var scriptUrl = document.getElementById('lx-script-url');
+  var scriptCode = document.getElementById('lx-script-code');
+  var defaultSource = document.getElementById('lx-default-source');
+  var mode = 'api';
+  var apiTab = document.getElementById('lx-mode-api');
+  var scriptTab = document.getElementById('lx-mode-script');
+  if (scriptTab && scriptTab.classList.contains('active')) mode = 'script';
+  else if (apiTab && apiTab.classList.contains('active')) mode = 'api';
+  return {
+    enabled: enabled ? !!enabled.checked : false,
+    mode: mode,
+    apiUrl: apiUrl ? apiUrl.value : '',
+    apiKey: apiKey ? apiKey.value : '',
+    scriptUrl: scriptUrl ? scriptUrl.value : '',
+    scriptCode: scriptCode ? scriptCode.value : '',
+    defaultSource: defaultSource ? defaultSource.value : 'wy',
+  };
+}
+
+async function openLxConfigModal() {
+  var modal = document.getElementById('lx-config-modal');
+  if (!modal) return;
+  setLxTestResult('', '');
+  applyLxStatusToChip(null);
+  try {
+    var cfg = await apiJson('/api/lx/config');
+    var enabled = document.getElementById('lx-enabled');
+    var apiUrl = document.getElementById('lx-api-url');
+    var apiKey = document.getElementById('lx-api-key');
+    var scriptUrl = document.getElementById('lx-script-url');
+    var scriptCode = document.getElementById('lx-script-code');
+    var defaultSource = document.getElementById('lx-default-source');
+    if (enabled) enabled.checked = !!cfg.enabled;
+    setLxMode(cfg.mode || 'api');
+    if (apiUrl) apiUrl.value = cfg.apiUrl || '';
+    if (apiKey) apiKey.value = cfg.apiKey || '';
+    if (scriptUrl) scriptUrl.value = cfg.scriptUrl || '';
+    if (scriptCode) scriptCode.value = cfg.scriptCode || '';
+    if (defaultSource) defaultSource.value = cfg.defaultSource || 'wy';
+  } catch (e) {
+    setLxTestResult('读取配置失败: ' + e.message, 'err');
+  }
+  try {
+    var st = await apiJson('/api/lx/status');
+    applyLxStatusToChip(st);
+  } catch (e) {}
+  openGsapModal(modal);
+}
+
+function closeLxConfigModal() {
+  closeGsapModal(document.getElementById('lx-config-modal'));
+}
+
+async function saveLxConfig(opts) {
+  opts = opts || {};
+  var saveBtn = document.getElementById('lx-save-btn');
+  if (saveBtn) saveBtn.disabled = true;
+  try {
+    var payload = collectLxConfigFromForm();
+    var r = await apiJson('/api/lx/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (r && r.status) applyLxStatusToChip(r.status);
+    if (r && r.ok) {
+      if (!opts.silent) {
+        showToast('落雪音乐源配置已保存');
+        setLxTestResult('', '');
+      }
+      return r;
+    }
+    setLxTestResult('保存失败: ' + ((r && r.error) || '未知错误'), 'err');
+    return r;
+  } catch (e) {
+    setLxTestResult('保存失败: ' + e.message, 'err');
+    return null;
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+async function testLxSource() {
+  // 先保存当前表单 (用临时配置测试), 再调用测试接口
+  var saved = await saveLxConfig({ silent: true });
+  if (!saved || !saved.ok) return;
+  setLxTestResult('正在测试…', '');
+  try {
+    var r = await apiJson('/api/lx/test?quality=320k', { timeoutMs: 15000 });
+    if (r && r.ok) {
+      var msg = '测试通过 · ' + (r.source || '') + ' · ' + (r.quality || '');
+      if (r.url) msg += '\n' + String(r.url).slice(0, 80) + (String(r.url).length > 80 ? '…' : '');
+      setLxTestResult(msg, 'ok');
+    } else {
+      setLxTestResult('测试失败: ' + ((r && r.error) || '未取到 URL'), 'err');
+    }
+  } catch (e) {
+    setLxTestResult('测试失败: ' + e.message, 'err');
+  }
 }
 async function logoutActiveAccount() {
   if (activeAccountProvider === 'qq') {

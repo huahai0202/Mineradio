@@ -28,6 +28,7 @@
       "build/**/*",
       "server.js",
       "dj-analyzer.js",
+      "lx-source.js",
       "package.json",
       "!public/index.*.html",
       "public/index.html"
