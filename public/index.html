@@ -268,7 +268,12 @@ body.home-wallpaper-preview #canvas-container{filter:none}
 .home-ranking-tab{flex:0 0 auto;height:30px;padding:0 12px;border-radius:999px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.045);color:rgba(255,255,255,.56);font-family:inherit;font-size:11px;font-weight:760;cursor:pointer;transition:background .2s,border-color .2s,color .2s,transform .2s;white-space:nowrap}
 .home-ranking-tab:hover{transform:translateY(-1px);color:#fff;background:rgba(255,255,255,.08)}
 .home-ranking-tab.active{color:#fff;border-color:color-mix(in srgb,var(--home-accent) 44%,rgba(255,255,255,.18));background:color-mix(in srgb,var(--home-accent) 16%,rgba(255,255,255,.05));box-shadow:0 10px 26px color-mix(in srgb,var(--home-accent) 12%,transparent)}
-.home-ranking-tab.more{border-color:color-mix(in srgb,var(--home-accent) 36%,rgba(255,255,255,.12));background:color-mix(in srgb,var(--home-accent) 10%,rgba(255,255,255,.04));color:rgba(255,255,255,.78)}
+.home-ranking-tab.more{width:34px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-color:color-mix(in srgb,var(--home-accent) 36%,rgba(255,255,255,.12));background:color-mix(in srgb,var(--home-accent) 10%,rgba(255,255,255,.04));color:rgba(255,255,255,.78)}
+.home-ranking-more-icon{display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:16px}
+.home-ranking-more-icon span{display:block;height:2px;border-radius:999px;background:currentColor;box-shadow:0 0 10px color-mix(in srgb,var(--home-accent) 28%,transparent)}
+.home-ranking-more-icon span:nth-child(1){width:16px}
+.home-ranking-more-icon span:nth-child(2){width:12px}
+.home-ranking-more-icon span:nth-child(3){width:8px}
 .home-ranking-cover{position:relative;align-self:stretch;min-height:180px;border-radius:22px;background:linear-gradient(135deg,color-mix(in srgb,var(--home-accent) 45%,#171a20),rgba(8,9,13,.88));background-size:cover;background-position:center;box-shadow:0 24px 68px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.13);overflow:hidden}
 .home-ranking-cover::after{content:'';position:absolute;inset:0;background:linear-gradient(145deg,rgba(255,255,255,.16),transparent 42%,rgba(0,0,0,.44));pointer-events:none}
 .home-ranking-list{grid-column:1 / -1;display:grid;grid-template-columns:1fr;gap:7px;min-height:0;align-content:start;overflow-y:auto;overscroll-behavior:contain;padding-right:2px;scrollbar-width:none;-ms-overflow-style:none}
@@ -16310,7 +16315,7 @@ function renderHomeRankings() {
       var active = String(item.id) === activeRankingId;
       return '<button class="home-ranking-tab' + (active ? ' active' : '') + '" type="button" onclick="selectHomeRanking(&quot;' + escHtml(String(item.id)) + '&quot;)">' + escHtml(item.name || '榜单') + '</button>';
     }).join('') + (rankings.length > HOME_RANKING_TAB_LIMIT
-      ? '<button class="home-ranking-tab more" type="button" onclick="toggleHomeRankingTabs()">' + (expanded ? '收起榜单' : ('全部榜单 ' + rankings.length)) + '</button>'
+      ? '<button class="home-ranking-tab more" type="button" onclick="toggleHomeRankingTabs()" title="' + (expanded ? '收起榜单' : '全部榜单') + '" aria-label="' + (expanded ? '收起榜单' : '全部榜单') + '"><span class="home-ranking-more-icon" aria-hidden="true"><span></span><span></span><span></span></span></button>'
       : '')
     : '<button class="home-ranking-tab active" type="button">网易云榜单</button>';
   if (homeRankingState.loading || homeRankingState.tracksLoading) {
