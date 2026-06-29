@@ -15305,6 +15305,88 @@ async function refreshLXSourceStatus(silent) {
     return null;
   }
 }
+function isNeteaseLoggedInForPlayback() {
+  return !!(loginStatus && loginStatus.loggedIn);
+}
+function hasLXNeteasePlaybackSource(status) {
+  status = status || lxSourceStatus || {};
+  var sources = status.sources || {};
+  var wy = sources && sources.wy;
+  if (!wy) return false;
+  var actions = Array.isArray(wy.actions) ? wy.actions : [];
+  return actions.indexOf('musicUrl') >= 0;
+}
+async function ensureLXNeteasePlaybackSource() {
+  if (hasLXNeteasePlaybackSource(lxSourceStatus)) return true;
+  var status = await refreshLXSourceStatus(true);
+  if (status && hasLXNeteasePlaybackSource(status)) return true;
+  var message = status && status.configured
+    ? '当前 LX 自定义源没有启用网易云音源，无法免登录播放网易云歌单。'
+    : '还没有导入可播放的 LX 自定义源，无法免登录播放网易云歌单。';
+  if (window.alert) window.alert(message + '\n\n请登录网易云，或导入包含网易云(wy) musicUrl 的 LX 源。');
+  else showToast(message);
+  return false;
+}
+function lxIntervalFromDuration(duration) {
+  var value = Number(duration) || 0;
+  if (!value) return '';
+  return value > 1000 ? Math.round(value / 1000) : Math.round(value);
+}
+function convertNeteaseSongToLXWy(song) {
+  song = cloneSong(song || {});
+  var id = song.id || song.songmid || song.mid || '';
+  var name = song.name || song.title || '';
+  var artist = song.artist || song.singer || '';
+  var album = song.album || song.albumName || '';
+  var cover = song.cover || song.pic || song.img || '';
+  var duration = song.duration || song.durationMs || song.dt || 0;
+  var lxMusicInfo = Object.assign({}, song.lxMusicInfo || song.raw || {}, {
+    source: 'wy',
+    id: id,
+    songmid: id,
+    mid: id,
+    name: name,
+    singer: artist,
+    artist: artist,
+    album: album,
+    albumName: album,
+    img: cover,
+    cover: cover,
+    interval: song.interval || lxIntervalFromDuration(duration),
+    _interval: song._interval || lxIntervalFromDuration(duration),
+    types: Array.isArray(song.types) ? song.types : [],
+    _types: song._types && typeof song._types === 'object' ? song._types : {},
+    typeUrl: song.typeUrl && typeof song.typeUrl === 'object' ? song.typeUrl : {},
+  });
+  return Object.assign({}, song, {
+    provider: 'lx',
+    source: 'lx',
+    type: 'lx',
+    lxSource: 'wy',
+    lxSourceName: '网易云',
+    id: 'wy:' + (id || (name + '|' + artist)),
+    songmid: id,
+    mid: id,
+    name: name,
+    artist: artist,
+    album: album,
+    cover: cover,
+    duration: duration,
+    playable: false,
+    fee: 0,
+    lxMusicInfo: lxMusicInfo,
+  });
+}
+async function prepareNeteaseTracksForPlaylistPlayback(tracks) {
+  tracks = (tracks || []).map(cloneSong);
+  if (!loginStatusChecked || loginStatusCheckFailed) await refreshLoginStatus(true);
+  if (!tracks.length || isNeteaseLoggedInForPlayback()) return tracks;
+  var ok = await ensureLXNeteasePlaybackSource();
+  if (!ok) return null;
+  return tracks.map(function(song){
+    return songProviderKey(song) === 'netease' ? convertNeteaseSongToLXWy(song) : song;
+  });
+}
 function openLXSourcePicker() {
   var input = document.getElementById('lx-source-input');
   if (input) input.click();
@@ -16335,7 +16417,9 @@ async function playHomeRanking() {
     showToast('榜单歌曲还没有载入');
     return;
   }
-  playQueue = homeRankingState.tracks.map(cloneSong);
+  var tracks = await prepareNeteaseTracksForPlaylistPlayback(homeRankingState.tracks);
+  if (!tracks) return;
+  playQueue = tracks;
   currentIdx = 0;
   safeRenderQueuePanel('home-ranking');
   safeShelfRebuild('home-ranking', true);
@@ -16348,7 +16432,9 @@ async function playHomeRankingSong(index) {
   homeForcedOpen = false;
   homeSuppressed = false;
   setHomeControlsLocked(false);
-  playQueue = homeRankingState.tracks.map(cloneSong);
+  var tracks = await prepareNeteaseTracksForPlaylistPlayback(homeRankingState.tracks);
+  if (!tracks) return;
+  playQueue = tracks;
   currentIdx = Math.max(0, Math.min(playQueue.length - 1, Number(index) || 0));
   safeRenderQueuePanel('home-ranking-song');
   safeShelfRebuild('home-ranking-song', true);
@@ -21056,13 +21142,24 @@ function playPlaylistPanelDetail() {
 function playPlaylistPanelDetailTrack(index) {
   var tracks = playlistPanelDetailState.tracks || [];
   if (!tracks[index]) return;
-  playQueue = tracks.map(cloneSong);
-  currentIdx = index;
-  safeRenderQueuePanel('playlist-panel-detail');
-  safeSwitchPlaylistTab('queue', 'playlist-panel-detail');
-  safeShelfRebuild('playlist-panel-detail', true);
-  forcePlaybackControlsInteractive();
-  playQueueAt(index).catch(function(e){ console.warn('[PlaylistPanelDetailPlay]', e); });
+  (async function(){
+    var st = playlistPanelDetailState;
+    var provider = st && st.key && st.key.split(':')[0] === 'netease' ? 'netease' : '';
+    var prepared = provider === 'netease'
+      ? await prepareNeteaseTracksForPlaylistPlayback(tracks)
+      : tracks.map(cloneSong);
+    if (!prepared) return;
+    playQueue = prepared;
+    currentIdx = index;
+    safeRenderQueuePanel('playlist-panel-detail');
+    safeSwitchPlaylistTab('queue', 'playlist-panel-detail');
+    safeShelfRebuild('playlist-panel-detail', true);
+    forcePlaybackControlsInteractive();
+    playQueueAt(index).catch(function(e){ console.warn('[PlaylistPanelDetailPlay]', e); });
+  })().catch(function(e){
+    console.warn('[PlaylistPanelDetailPrepare]', e);
+    showToast('歌单播放准备失败');
+  });
 }
 function openPlaylistPanelDetailArtist(index) {
   var song = playlistPanelDetailState.tracks && playlistPanelDetailState.tracks[index];
@@ -21341,7 +21438,11 @@ async function loadPlaylistIntoQueueById(id, autoplay, title) {
   try {
     if (r.error) { showToast('歌单加载失败: ' + r.error); return; }
     if (!r.tracks || !r.tracks.length) { showToast('歌单为空'); return; }
-    playQueue = r.tracks.map(cloneSong);
+    var tracks = (!qqPlaylistId && !localPlaylistIdValue)
+      ? await prepareNeteaseTracksForPlaylistPlayback(r.tracks)
+      : r.tracks.map(cloneSong);
+    if (!tracks) return;
+    playQueue = tracks;
     if (!qqPlaylistId && !localPlaylistIdValue && isLikedPlaylistContext(id, title, r.playlist)) markSongsLiked(playQueue, true);
     if (!qqPlaylistId && !localPlaylistIdValue) syncLikeStatusForSongs(playQueue);
     currentIdx = 0;
