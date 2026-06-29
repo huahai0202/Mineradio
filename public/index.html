@@ -15320,11 +15320,6 @@ async function ensureLXNeteasePlaybackSource() {
   if (hasLXNeteasePlaybackSource(lxSourceStatus)) return true;
   var status = await refreshLXSourceStatus(true);
   if (status && hasLXNeteasePlaybackSource(status)) return true;
-  var message = status && status.configured
-    ? '当前 LX 自定义源没有启用网易云音源，无法免登录播放网易云歌单。'
-    : '还没有导入可播放的 LX 自定义源，无法免登录播放网易云歌单。';
-  if (window.alert) window.alert(message + '\n\n请登录网易云，或导入包含网易云(wy) musicUrl 的 LX 源。');
-  else showToast(message);
   return false;
 }
 function lxIntervalFromDuration(duration) {
@@ -15382,7 +15377,7 @@ async function prepareNeteaseTracksForPlaylistPlayback(tracks) {
   if (!loginStatusChecked || loginStatusCheckFailed) await refreshLoginStatus(true);
   if (!tracks.length || isNeteaseLoggedInForPlayback()) return tracks;
   var ok = await ensureLXNeteasePlaybackSource();
-  if (!ok) return null;
+  if (!ok) return tracks;
   return tracks.map(function(song){
     return songProviderKey(song) === 'netease' ? convertNeteaseSongToLXWy(song) : song;
   });
