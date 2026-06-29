@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.1.2
+
+- Fork release: rename this build to `Mineradio LX` and switch package/update metadata to `huahai0202/Mineradio`.
+- Document that this repository is based on the official Mineradio project and focuses on LX Music source adaptation.
+- Add LX source support notes, quality handling notes, cache behavior notes, local playlist behavior, and third-party platform disclaimers to README.
+- Installer artifact is now named `Mineradio-LX-${version}-Setup.exe`.
+- Windows executable metadata now follows `package.json` product information instead of hardcoding the original product name.
+
 ## v1.1.1
 
 - P0 installer safety fix: installation now defaults to the first available non-C drive from `D:\Mineradio` through `Z:\Mineradio`; it falls back to `C:\Mineradio` only when no D-Z drive exists.

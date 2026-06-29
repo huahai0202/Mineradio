@@ -50,21 +50,73 @@ const fs   = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const tls = require('tls');
+const vm = require('vm');
+const zlib = require('zlib');
+const util = require('util');
+const iconv = require('iconv-lite');
 const { once } = require('events');
 const { fileURLToPath } = require('url');
+const { execFileSync } = require('child_process');
 const { analyzePodcastDjStream, analyzePodcastDjIntro } = require('./dj-analyzer');
+
+function configureWindowsConsoleEncoding() {
+  if (process.platform !== 'win32' || process.env.MINERADIO_SKIP_CONSOLE_UTF8 === '1') return;
+  try {
+    if (process.stdout && process.stdout.setDefaultEncoding) process.stdout.setDefaultEncoding('utf8');
+    if (process.stderr && process.stderr.setDefaultEncoding) process.stderr.setDefaultEncoding('utf8');
+  } catch (e) {}
+  try {
+    execFileSync('cmd.exe', ['/d', '/s', '/c', 'chcp 65001 >NUL'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+  } catch (e) {}
+}
+
+function installWindowsPipeConsoleEncoding() {
+  if (process.platform !== 'win32') return;
+  const configured = String(process.env.MINERADIO_CONSOLE_ENCODING || '').trim().toLowerCase();
+  const wantsGbk = configured === 'gbk' || configured === 'cp936' || configured === 'gb18030';
+  const wantsUtf8 = configured === 'utf8' || configured === 'utf-8';
+  if (wantsUtf8) return;
+  if (!wantsGbk && process.stdout && process.stdout.isTTY && process.stderr && process.stderr.isTTY) return;
+  const encoding = wantsGbk ? 'gb18030' : 'gb18030';
+  function write(stream, fallback, args) {
+    const line = util.format(...args) + '\n';
+    try {
+      stream.write(iconv.encode(line, encoding));
+    } catch (e) {
+      fallback(...args);
+    }
+  }
+  const originalLog = console.log.bind(console);
+  const originalInfo = console.info.bind(console);
+  const originalWarn = console.warn.bind(console);
+  const originalError = console.error.bind(console);
+  console.log = (...args) => write(process.stdout, originalLog, args);
+  console.info = (...args) => write(process.stdout, originalInfo, args);
+  console.warn = (...args) => write(process.stderr, originalWarn, args);
+  console.error = (...args) => write(process.stderr, originalError, args);
+}
+
+configureWindowsConsoleEncoding();
+installWindowsPipeConsoleEncoding();
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const COOKIE_FILE = process.env.COOKIE_FILE || path.join(__dirname, '.cookie');
 const QQ_COOKIE_FILE = process.env.QQ_COOKIE_FILE || path.join(__dirname, '.qq-cookie');
+const LX_SOURCE_FILE = process.env.MINERADIO_LX_SOURCE_FILE || '';
 const UPDATE_WORK_DIR = process.env.MINERADIO_UPDATE_DIR || path.join(__dirname, 'updates');
 const UPDATE_DOWNLOAD_DIR = process.env.MINERADIO_UPDATE_DOWNLOAD_DIR || path.join(UPDATE_WORK_DIR, 'downloads');
 const UPDATE_PATCH_BACKUP_DIR = process.env.MINERADIO_PATCH_BACKUP_DIR || path.join(UPDATE_WORK_DIR, 'backups', 'patches');
 const BEATMAP_CACHE_DIR = process.env.MINERADIO_BEAT_CACHE_DIR || 'D:\\MineradioCache\\beatmaps';
+const AUDIO_CACHE_DIR = process.env.MINERADIO_AUDIO_CACHE_DIR || 'D:\\MineradioCache\\audio';
 const APP_PACKAGE = readPackageInfo();
 const APP_VERSION = process.env.MINERADIO_VERSION || APP_PACKAGE.version || '0.9.11';
+const APP_DISPLAY_NAME = APP_PACKAGE.productName || 'Mineradio';
+const APP_ARTIFACT_PREFIX = APP_DISPLAY_NAME.replace(/\s+/g, '-');
 const UPDATE_CONFIG = readUpdateConfig(APP_PACKAGE);
 const PATCH_MAX_BYTES = 12 * 1024 * 1024;
 const PATCH_ALLOWED_ROOTS = new Set(['public', 'desktop', 'build']);
@@ -439,7 +491,7 @@ function normalizeManifestUpdateInfo(data) {
   const assetUrls = [downloadUrl].concat(Array.isArray(asset.downloadUrls) ? asset.downloadUrls : []);
   const patchUrls = patch ? [patch.downloadUrl].concat(Array.isArray(patch.downloadUrls) ? patch.downloadUrls : []) : [];
   const patchInfo = patch && patch.downloadUrl ? {
-    name: patch.name || updateAssetNameFromUrl(patch.downloadUrl) || `Mineradio-${APP_VERSION}→${latestVersion}.patch.json`,
+    name: patch.name || updateAssetNameFromUrl(patch.downloadUrl) || `${APP_ARTIFACT_PREFIX}-${APP_VERSION}→${latestVersion}.patch.json`,
     size: Number(patch.size || 0) || 0,
     contentType: patch.contentType || patch.content_type || 'application/json',
     downloadUrl: patch.downloadUrl,
@@ -453,7 +505,7 @@ function normalizeManifestUpdateInfo(data) {
     ? release.notes.slice(0, 4).map(cleanReleaseLine).filter(Boolean)
     : (extractReleaseNotes(release.body || data.body).length ? extractReleaseNotes(release.body || data.body) : UPDATE_FALLBACK_NOTES);
   const assetInfo = downloadUrl ? {
-    name: asset.name || updateAssetNameFromUrl(downloadUrl) || `Mineradio-${latestVersion}-Setup.exe`,
+    name: asset.name || updateAssetNameFromUrl(downloadUrl) || `${APP_ARTIFACT_PREFIX}-${latestVersion}-Setup.exe`,
     size: Number(asset.size || 0) || 0,
     contentType: asset.contentType || asset.content_type || '',
     downloadUrl,
@@ -469,7 +521,7 @@ function normalizeManifestUpdateInfo(data) {
     latestVersion,
     release: {
       tagName: release.tagName || release.tag_name || data.tagName || ('v' + latestVersion),
-      name: release.name || data.name || ('Mineradio v' + latestVersion),
+      name: release.name || data.name || (APP_DISPLAY_NAME + ' v' + latestVersion),
       version: latestVersion,
       publishedAt: release.publishedAt || release.published_at || data.publishedAt || '',
       htmlUrl: release.htmlUrl || release.html_url || data.htmlUrl || '',
@@ -569,6 +621,404 @@ function writeBeatMapCache(body) {
   fs.renameSync(tmp, file);
   return { ok: true, key: payload.key, savedAt: payload.savedAt, dir: path.dirname(file) };
 }
+
+function audioCacheRootInfo() {
+  const dir = path.resolve(AUDIO_CACHE_DIR);
+  const root = path.parse(dir).root;
+  const drive = root ? root.replace(/[\\\/]+$/, '').toUpperCase() : '';
+  const allowed = !!root && !/^C:$/i.test(drive);
+  const available = allowed && fs.existsSync(root);
+  return { dir, root, drive, allowed, available };
+}
+
+function ensureAudioCacheDir() {
+  const info = audioCacheRootInfo();
+  if (!info.allowed) {
+    const err = new Error('AUDIO_CACHE_ON_C_DRIVE_DISABLED');
+    err.code = 'AUDIO_CACHE_ON_C_DRIVE_DISABLED';
+    err.info = info;
+    throw err;
+  }
+  if (!fs.existsSync(info.root)) {
+    const err = new Error('AUDIO_CACHE_DRIVE_UNAVAILABLE');
+    err.code = 'AUDIO_CACHE_DRIVE_UNAVAILABLE';
+    err.info = info;
+    throw err;
+  }
+  fs.mkdirSync(info.dir, { recursive: true });
+  return info.dir;
+}
+
+function cleanAudioCacheText(value, fallback) {
+  const text = stripHtmlTags(value || fallback || '')
+    .replace(/[\\/:*?"<>|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.slice(0, 80);
+}
+
+function audioCacheStableSongKey(audioUrl, meta) {
+  meta = meta || {};
+  const id = cleanAudioCacheText(meta.songId || meta.musicId || meta.id || '', '');
+  if (id) return 'id:' + id;
+  const title = cleanAudioCacheText(meta.title || meta.name, '');
+  const artist = cleanAudioCacheText(meta.artist || meta.singer, '');
+  const album = cleanAudioCacheText(meta.album, '');
+  if (!title && !artist && !album) return 'url:' + String(audioUrl || '');
+  return [
+    'meta',
+    title,
+    artist,
+    album,
+  ].join('|');
+}
+
+function audioCacheSourceKey(meta) {
+  meta = meta || {};
+  return cleanAudioCacheText(meta.sourceKey || meta.sourceId || meta.provider || meta.source || '', '');
+}
+
+function audioCacheQualityKey(meta) {
+  meta = meta || {};
+  return cleanAudioCacheText(meta.qualityKey || meta.quality || meta.level || '', '');
+}
+
+function audioCacheBaseIdentity(audioUrl, meta) {
+  meta = meta || {};
+  return [
+    'audio-cache-v2',
+    cleanAudioCacheText(meta.provider || '', ''),
+    audioCacheSourceKey(meta),
+    audioCacheStableSongKey(audioUrl, meta),
+    audioCacheQualityKey(meta),
+  ].join('\n');
+}
+
+function audioCacheFormat(audioUrl, contentType) {
+  return audioCacheExt(audioUrl, contentType).replace(/^\./, '') || 'bin';
+}
+
+function audioCacheIdentity(audioUrl, meta, contentType) {
+  return audioCacheBaseIdentity(audioUrl, meta) + '\nformat:' + audioCacheFormat(audioUrl, contentType);
+}
+
+function audioCacheExt(audioUrl, contentType) {
+  const fromUrl = String(audioUrl || '').split('?')[0].match(/\.(mp3|flac|m4a|mp4|aac|ogg|opus|wav|ape)$/i);
+  if (fromUrl) return '.' + fromUrl[1].toLowerCase();
+  const ct = String(contentType || '').toLowerCase();
+  if (ct.includes('flac')) return '.flac';
+  if (ct.includes('mpeg')) return '.mp3';
+  if (ct.includes('mp4')) return '.m4a';
+  if (ct.includes('ogg')) return '.ogg';
+  if (ct.includes('wav')) return '.wav';
+  return '.bin';
+}
+
+function audioCacheDisplayName(audioUrl, meta, hash, ext) {
+  meta = meta || {};
+  const title = cleanAudioCacheText(meta.title || meta.name, '未知歌曲');
+  const artist = cleanAudioCacheText(meta.artist || meta.singer, '未知歌手');
+  const quality = cleanAudioCacheText(meta.quality || meta.level || '', '');
+  const source = cleanAudioCacheText(meta.source || meta.provider || '', '');
+  const bits = [title, artist, quality, source].filter(Boolean);
+  return bits.join(' - ').slice(0, 180) + ' - ' + hash.slice(0, 10) + ext;
+}
+
+function audioCachePaths(audioUrl, contentType, meta) {
+  const dir = ensureAudioCacheDir();
+  const baseIdentity = audioCacheBaseIdentity(audioUrl, meta);
+  const baseKey = crypto.createHash('sha1').update(baseIdentity).digest('hex');
+  const identity = audioCacheIdentity(audioUrl, meta, contentType);
+  const hash = crypto.createHash('sha1').update(identity).digest('hex');
+  const ext = audioCacheExt(audioUrl, contentType);
+  const filename = audioCacheDisplayName(audioUrl, meta, hash, ext);
+  return {
+    key: hash,
+    baseKey,
+    baseIdentity,
+    identity,
+    file: path.join(dir, filename),
+    meta: path.join(dir, hash + '.json'),
+    tmp: path.join(dir, hash + ext + '.tmp'),
+  };
+}
+
+function audioCacheEntryFromMetaFile(metaFile, expectedBaseKey) {
+  try {
+    const savedMeta = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+    if (!savedMeta || savedMeta.version !== 2) return null;
+    if (expectedBaseKey && savedMeta.baseKey !== expectedBaseKey) return null;
+    const file = savedMeta.file;
+    const dir = ensureAudioCacheDir();
+    const resolved = path.resolve(file || '');
+    if (!file || !resolved.startsWith(path.resolve(dir) + path.sep)) return null;
+    if (!fs.existsSync(resolved)) return null;
+    const stat = fs.statSync(resolved);
+    if (!stat.size) return null;
+    return Object.assign({}, savedMeta, { file: resolved, size: stat.size, key: savedMeta.key || path.basename(metaFile, '.json') });
+  } catch (e) {
+    return null;
+  }
+}
+
+function isAudioCacheStableMeta(meta) {
+  meta = meta || {};
+  const songId = cleanAudioCacheText(meta.songId || meta.musicId || meta.id || '', '');
+  const title = cleanAudioCacheText(meta.title || meta.name, '');
+  const artist = cleanAudioCacheText(meta.artist || meta.singer, '');
+  const provider = cleanAudioCacheText(meta.provider || '', '');
+  const source = audioCacheSourceKey(meta);
+  const quality = audioCacheQualityKey(meta);
+  return !!((songId || (title && artist)) && provider && source && quality);
+}
+
+function findAudioCacheEntry(audioUrl, cacheMeta) {
+  let paths;
+  try { paths = audioCachePaths(audioUrl, '', cacheMeta); } catch (e) { return null; }
+  const exact = fs.existsSync(paths.meta) ? audioCacheEntryFromMetaFile(paths.meta, paths.baseKey) : null;
+  if (exact) {
+    if (hasHigherQualityAudioCache(audioUrl, cacheMeta)) {
+      removeAudioCacheEntry(exact);
+      return null;
+    }
+    return exact;
+  }
+  try {
+    const dir = ensureAudioCacheDir();
+    for (const name of fs.readdirSync(dir)) {
+      if (!/\.json$/i.test(name)) continue;
+      const entry = audioCacheEntryFromMetaFile(path.join(dir, name), paths.baseKey);
+      if (entry) {
+        if (hasHigherQualityAudioCache(audioUrl, cacheMeta)) {
+          removeAudioCacheEntry(entry);
+          return null;
+        }
+        return entry;
+      }
+    }
+  } catch (e) {
+    return null;
+  }
+  return null;
+}
+
+function hasHigherQualityAudioCache(audioUrl, cacheMeta) {
+  if (!isAudioCacheStableMeta(cacheMeta)) return false;
+  const requestedRank = audioCacheQualityRank(audioCacheQualityKey(cacheMeta) || (cacheMeta && cacheMeta.quality));
+  if (requestedRank <= 0) return false;
+  let dir;
+  try { dir = ensureAudioCacheDir(); } catch (e) { return false; }
+  const groupKey = crypto.createHash('sha1').update(audioCacheGroupIdentity(audioUrl, cacheMeta)).digest('hex');
+  for (const name of fs.readdirSync(dir)) {
+    if (!/\.json$/i.test(name)) continue;
+    let meta;
+    try { meta = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')); } catch (e) { continue; }
+    if (!meta || meta.version !== 2 || meta.groupKey !== groupKey) continue;
+    const rank = Number(meta.qualityRank) || audioCacheQualityRank(meta.qualityKey || meta.quality);
+    if (rank > requestedRank) return true;
+  }
+  return false;
+}
+
+function parseRangeHeader(range, size) {
+  const m = String(range || '').match(/^bytes=(\d*)-(\d*)$/);
+  if (!m || !size) return null;
+  let start = m[1] === '' ? 0 : Number(m[1]);
+  let end = m[2] === '' ? size - 1 : Number(m[2]);
+  if (m[1] === '' && m[2] !== '') {
+    const suffix = Number(m[2]) || 0;
+    start = Math.max(0, size - suffix);
+    end = size - 1;
+  }
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end < start || start >= size) return null;
+  return { start, end: Math.min(end, size - 1) };
+}
+
+function serveAudioCacheEntry(req, res, entry) {
+  const size = entry.size;
+  const range = parseRangeHeader(req.headers.range, size);
+  const headers = {
+    'Content-Type': audioContentTypeForUrl(entry.url || entry.identity || '', entry.contentType),
+    'Accept-Ranges': 'bytes',
+    'Access-Control-Allow-Origin': '*',
+    'X-Mineradio-Audio-Cache': 'hit',
+  };
+  if (range) {
+    headers['Content-Range'] = `bytes ${range.start}-${range.end}/${size}`;
+    headers['Content-Length'] = String(range.end - range.start + 1);
+    res.writeHead(206, headers);
+    fs.createReadStream(entry.file, { start: range.start, end: range.end }).pipe(res);
+    return true;
+  }
+  headers['Content-Length'] = String(size);
+  res.writeHead(200, headers);
+  fs.createReadStream(entry.file).pipe(res);
+  return true;
+}
+
+const audioCacheDownloads = new Set();
+
+function audioCacheQualityRank(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return 0;
+  if (/jymaster|master|母带/.test(raw)) return 80;
+  if (/atmos[_\s-]*plus|全景声\+|臻品全景声/.test(raw)) return 70;
+  if (/atmos|全景声/.test(raw)) return 65;
+  if (/hi[-_\s]*res|hires|flac24|24bit|24-bit|高清臻音/.test(raw)) return 60;
+  if (/lossless|flac|ape|无损|sq/.test(raw)) return 50;
+  if (/exhigh|320|高品|极高|hq/.test(raw)) return 40;
+  if (/192/.test(raw)) return 30;
+  if (/standard|128|标准/.test(raw)) return 20;
+  if (/aac|m4a/.test(raw)) return 10;
+  return 1;
+}
+
+function audioCacheGroupIdentity(audioUrl, meta) {
+  meta = meta || {};
+  return [
+    'audio-cache-group-v2',
+    cleanAudioCacheText(meta.provider || '', ''),
+    audioCacheSourceKey(meta),
+    audioCacheStableSongKey(audioUrl, meta),
+  ].join('\n');
+}
+
+function audioCacheSafeRemove(file, dir) {
+  if (!file) return false;
+  try {
+    const root = path.resolve(dir);
+    const target = path.resolve(file);
+    if (target !== root && !target.startsWith(root + path.sep)) return false;
+    if (!fs.existsSync(target)) return false;
+    fs.rmSync(target, { force: true });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function removeAudioCacheEntry(entry) {
+  if (!entry) return;
+  let dir;
+  try { dir = ensureAudioCacheDir(); } catch (e) { return; }
+  audioCacheSafeRemove(entry.file, dir);
+  if (entry.key) audioCacheSafeRemove(path.join(dir, entry.key + '.json'), dir);
+}
+
+function pruneLowerQualityAudioCache(savedMeta) {
+  if (!savedMeta || savedMeta.version !== 2) return;
+  const rank = Number(savedMeta.qualityRank) || 0;
+  if (rank <= 0) return;
+  let dir;
+  try { dir = ensureAudioCacheDir(); } catch (e) { return; }
+  const groupKey = savedMeta.groupKey;
+  if (!groupKey) return;
+  for (const name of fs.readdirSync(dir)) {
+    if (!/\.json$/i.test(name)) continue;
+    const metaFile = path.join(dir, name);
+    let meta;
+    try { meta = JSON.parse(fs.readFileSync(metaFile, 'utf8')); } catch (e) { continue; }
+    if (!meta || meta.version !== 2 || meta.key === savedMeta.key) continue;
+    if (meta.groupKey !== groupKey) continue;
+    const oldRank = Number(meta.qualityRank) || audioCacheQualityRank(meta.qualityKey || meta.quality);
+    if (oldRank >= rank) continue;
+    audioCacheSafeRemove(meta.file, dir);
+    audioCacheSafeRemove(metaFile, dir);
+  }
+}
+
+async function cacheAudioInBackground(audioUrl, contentType, cacheMeta) {
+  if (!isAudioCacheStableMeta(cacheMeta)) return;
+  let paths;
+  try { paths = audioCachePaths(audioUrl, contentType, cacheMeta); } catch (e) { return; }
+  const downloadKey = paths.baseKey || paths.key;
+  if (hasHigherQualityAudioCache(audioUrl, cacheMeta)) return;
+  if (findAudioCacheEntry(audioUrl, cacheMeta) || audioCacheDownloads.has(downloadKey)) return;
+  audioCacheDownloads.add(downloadKey);
+  try {
+    const up = await fetch(audioUrl, { headers: audioProxyHeadersFor(audioUrl, '') });
+    if (!up.ok) throw new Error('HTTP ' + up.status);
+    const finalType = audioContentTypeForUrl(audioUrl, up.headers.get('content-type') || contentType || '');
+    const finalPaths = audioCachePaths(audioUrl, finalType, cacheMeta);
+    const tmp = finalPaths.tmp;
+    const ws = fs.createWriteStream(tmp);
+    const reader = up.body.getReader();
+    let size = 0;
+    while (true) {
+      const c = await reader.read();
+      if (c.done) break;
+      size += c.value.length;
+      ws.write(Buffer.from(c.value));
+    }
+    await new Promise((resolve, reject) => ws.end(err => err ? reject(err) : resolve()));
+    fs.renameSync(tmp, finalPaths.file);
+    const savedMeta = {
+      version: 2,
+      key: finalPaths.key,
+      baseKey: finalPaths.baseKey,
+      groupKey: crypto.createHash('sha1').update(audioCacheGroupIdentity(audioUrl, cacheMeta)).digest('hex'),
+      identity: finalPaths.identity,
+      baseIdentity: finalPaths.baseIdentity,
+      url: audioUrl,
+      file: finalPaths.file,
+      title: cleanAudioCacheText(cacheMeta && (cacheMeta.title || cacheMeta.name), ''),
+      artist: cleanAudioCacheText(cacheMeta && (cacheMeta.artist || cacheMeta.singer), ''),
+      album: cleanAudioCacheText(cacheMeta && cacheMeta.album, ''),
+      source: cleanAudioCacheText(cacheMeta && (cacheMeta.source || cacheMeta.provider), ''),
+      provider: cleanAudioCacheText(cacheMeta && cacheMeta.provider, ''),
+      sourceKey: audioCacheSourceKey(cacheMeta),
+      songId: cleanAudioCacheText(cacheMeta && (cacheMeta.songId || cacheMeta.musicId || cacheMeta.id), ''),
+      qualityKey: audioCacheQualityKey(cacheMeta),
+      quality: cleanAudioCacheText(cacheMeta && (cacheMeta.quality || cacheMeta.level), ''),
+      qualityRank: audioCacheQualityRank(audioCacheQualityKey(cacheMeta) || (cacheMeta && cacheMeta.quality)),
+      format: audioCacheFormat(audioUrl, finalType),
+      contentType: finalType,
+      size,
+      savedAt: Date.now(),
+    };
+    fs.writeFileSync(finalPaths.meta, JSON.stringify(savedMeta), 'utf8');
+    pruneLowerQualityAudioCache(savedMeta);
+  } catch (e) {
+    try { if (paths && fs.existsSync(paths.tmp)) fs.rmSync(paths.tmp, { force: true }); } catch (_) {}
+    console.warn('[AudioCache]', e.message || e);
+  } finally {
+    audioCacheDownloads.delete(downloadKey);
+  }
+}
+
+function audioCacheStatus() {
+  const info = audioCacheRootInfo();
+  let count = 0;
+  let bytes = 0;
+  if (fs.existsSync(info.dir)) {
+    for (const name of fs.readdirSync(info.dir)) {
+      if (/\.tmp$|\.json$/i.test(name)) continue;
+      const file = path.join(info.dir, name);
+      try {
+        const stat = fs.statSync(file);
+        if (stat.isFile()) {
+          count++;
+          bytes += stat.size;
+        }
+      } catch (e) {}
+    }
+  }
+  return Object.assign({ enabled: info.allowed && !!info.root, count, bytes }, info);
+}
+
+function clearAudioCache() {
+  const info = audioCacheRootInfo();
+  if (!info.allowed) return Object.assign({ ok: false, error: 'AUDIO_CACHE_ON_C_DRIVE_DISABLED' }, info);
+  if (!fs.existsSync(info.dir)) return Object.assign({ ok: true, removed: 0 }, info);
+  let removed = 0;
+  for (const name of fs.readdirSync(info.dir)) {
+    try {
+      fs.rmSync(path.join(info.dir, name), { recursive: true, force: true });
+      removed++;
+    } catch (e) {}
+  }
+  return Object.assign({ ok: true, removed }, audioCacheStatus());
+}
 function localUpdateFallback(reason, opts) {
   opts = opts || {};
   const configured = !!(opts.configured != null ? opts.configured : false);
@@ -580,7 +1030,7 @@ function localUpdateFallback(reason, opts) {
     latestVersion: APP_VERSION,
     release: {
       tagName: 'v' + APP_VERSION,
-      name: 'Mineradio v' + APP_VERSION,
+      name: APP_DISPLAY_NAME + ' v' + APP_VERSION,
       version: APP_VERSION,
       htmlUrl: '',
       downloadUrl: '',
@@ -667,7 +1117,7 @@ function githubReleaseDownloadUrl(version, fileName) {
 }
 function parseLatestYmlUpdateInfo(text, reason) {
   const latestVersion = normalizeVersion(yamlScalar(text, 'version') || APP_VERSION) || APP_VERSION;
-  const assetPath = yamlScalar(text, 'path') || yamlScalar(text, 'url') || `Mineradio-${latestVersion}-Setup.exe`;
+  const assetPath = yamlScalar(text, 'path') || yamlScalar(text, 'url') || `${APP_ARTIFACT_PREFIX}-${latestVersion}-Setup.exe`;
   const sha512 = normalizeDigest(yamlScalar(text, 'sha512'), 'sha512');
   const size = Number(yamlScalar(text, 'size') || 0) || 0;
   const releaseDate = yamlScalar(text, 'releaseDate');
@@ -690,7 +1140,7 @@ function parseLatestYmlUpdateInfo(text, reason) {
     latestVersion,
     release: {
       tagName: 'v' + latestVersion,
-      name: 'Mineradio v' + latestVersion,
+      name: APP_DISPLAY_NAME + ' v' + latestVersion,
       version: latestVersion,
       publishedAt: releaseDate,
       htmlUrl: `https://github.com/${UPDATE_CONFIG.owner}/${UPDATE_CONFIG.repo}/releases/tag/v${latestVersion}`,
@@ -743,7 +1193,7 @@ async function fetchLatestUpdateInfo() {
       latestVersion,
       release: {
         tagName: data.tag_name || ('v' + latestVersion),
-        name: data.name || ('Mineradio v' + latestVersion),
+        name: data.name || (APP_DISPLAY_NAME + ' v' + latestVersion),
         version: latestVersion,
         publishedAt: data.published_at || '',
         htmlUrl: data.html_url || '',
@@ -764,7 +1214,7 @@ async function fetchLatestUpdateInfo() {
   }
 }
 function safeUpdateFileName(name, version) {
-  const raw = String(name || '').trim() || `Mineradio-${version || APP_VERSION}.exe`;
+  const raw = String(name || '').trim() || `${APP_ARTIFACT_PREFIX}-${version || APP_VERSION}.exe`;
   const cleaned = raw
     .replace(/[<>:"/\\|?*\x00-\x1F]/g, '-')
     .replace(/\s+/g, ' ')
@@ -1569,10 +2019,40 @@ function mapArtists(raw) {
     .map(a => ({ id: a && a.id, name: (a && a.name) || '' }))
     .filter(a => a.name);
 }
+function neteaseQualityTypesFromSong(s) {
+  s = s || {};
+  const types = [];
+  const typeMap = {};
+  const privilege = s.privilege || {};
+  const maxBrLevel = String(privilege.maxBrLevel || '').toLowerCase();
+  if (maxBrLevel === 'jymaster' || maxBrLevel === 'sky' || maxBrLevel === 'dolby') {
+    addLXQuality(types, typeMap, 'master', '', {});
+  }
+  if (maxBrLevel === 'hires' || s.hr) {
+    addLXQuality(types, typeMap, 'hires', lxSizeFormat(s.hr && s.hr.size), {});
+  }
+  if (s.jm && s.jm.size) {
+    addLXQuality(types, typeMap, 'master', lxSizeFormat(s.jm.size), {});
+  }
+  if (s.je && s.je.size) {
+    addLXQuality(types, typeMap, 'atmos', lxSizeFormat(s.je.size), {});
+  }
+  if (s.sq || Number(privilege.maxbr) >= 999000) {
+    addLXQuality(types, typeMap, 'flac', lxSizeFormat(s.sq && s.sq.size), {});
+  }
+  if (s.h || Number(privilege.maxbr) >= 320000) {
+    addLXQuality(types, typeMap, '320k', lxSizeFormat(s.h && s.h.size), {});
+  }
+  if (s.m || s.l || types.length) {
+    addLXQuality(types, typeMap, '128k', lxSizeFormat((s.l || s.m) && (s.l || s.m).size), {});
+  }
+  return { types, _types: typeMap };
+}
 function mapSongRecord(s) {
   s = s || {};
   const artists = mapArtists(s.ar || s.artists);
   const album = s.al || s.album || {};
+  const qualityInfo = neteaseQualityTypesFromSong(s);
   return {
     provider: 'netease',
     source: 'netease',
@@ -1586,6 +2066,8 @@ function mapSongRecord(s) {
     cover: album.picUrl || album.coverUrl || '',
     duration: s.dt || s.duration || 0,
     fee: s.fee,
+    types: qualityInfo.types,
+    _types: qualityInfo._types,
   };
 }
 function mapDiscoverPlaylist(pl, tag) {
@@ -1777,6 +2259,1814 @@ async function requestJson(targetUrl, opts, body) {
     err.cause = e;
     throw err;
   }
+}
+
+async function lxFetchResponse(targetUrl, opts) {
+  opts = opts || {};
+  const headers = Object.assign({ 'User-Agent': UA }, opts.headers || {});
+  const response = await fetchWithTimeout(targetUrl, {
+    method: opts.method || 'GET',
+    headers,
+    body: opts.body,
+  }, opts.timeoutMs || 12000);
+  if (!response.ok) {
+    const err = new Error('HTTP ' + response.status);
+    err.statusCode = response.status;
+    throw err;
+  }
+  return response;
+}
+
+async function lxFetchText(targetUrl, opts) {
+  const response = await lxFetchResponse(targetUrl, opts);
+  return response.text();
+}
+
+async function lxFetchJson(targetUrl, opts) {
+  const text = await lxFetchText(targetUrl, opts);
+  return parseJSONText(text);
+}
+
+async function lxFetchRaw(targetUrl, opts) {
+  const response = await lxFetchResponse(targetUrl, opts);
+  return Buffer.from(await response.arrayBuffer());
+}
+
+function lxFormBody(data) {
+  const params = new URLSearchParams();
+  Object.keys(data || {}).forEach(key => {
+    if (data[key] != null) params.append(key, String(data[key]));
+  });
+  return params.toString();
+}
+
+function stripHtmlTags(value) {
+  return String(value || '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#40;/g, '(')
+    .replace(/&#41;/g, ')')
+    .trim();
+}
+
+function normalizeLxCoverUrl(url, size) {
+  url = String(url || '').trim();
+  if (!url) return '';
+  if (url.includes('{size}')) url = url.replace(/\{size\}/g, String(size || 500));
+  if (url && !/^https?:\/\//i.test(url)) url = 'http://d.musicapp.migu.cn' + url;
+  return url;
+}
+
+function lxFormatDurationMs(seconds) {
+  const n = Number(seconds) || 0;
+  return n > 0 ? Math.round(n * 1000) : 0;
+}
+
+function lxArtistsFromText(text) {
+  return String(text || '')
+    .split(/\s*\/\s*|\s*,\s*|、|&| feat\.? | ft\.? /i)
+    .map(name => ({ name: stripHtmlTags(name) }))
+    .filter(a => a.name);
+}
+
+function lxSizeFormat(bytes) {
+  const n = Number(bytes) || 0;
+  if (!n) return '';
+  if (n >= 1024 * 1024 * 1024) return (n / 1024 / 1024 / 1024).toFixed(2).replace(/\.?0+$/, '') + 'GB';
+  if (n >= 1024 * 1024) return (n / 1024 / 1024).toFixed(2).replace(/\.?0+$/, '') + 'MB';
+  if (n >= 1024) return (n / 1024).toFixed(2).replace(/\.?0+$/, '') + 'KB';
+  return n + 'B';
+}
+
+function addLXQuality(types, typeMap, type, size, extra) {
+  if (extra && extra.requireEvidence && !size && !extra.hash) return;
+  if (!type || typeMap[type]) return;
+  const meta = {};
+  if (size) meta.size = String(size).toUpperCase();
+  if (extra && extra.hash) meta.hash = extra.hash;
+  if (extra && extra.label) meta.label = String(extra.label);
+  types.push(Object.assign({ type }, meta));
+  typeMap[type] = meta;
+}
+
+function addLXQualityFromObject(types, typeMap, item, fallbackType) {
+  if (!item) return;
+  if (typeof item !== 'object') {
+    addLXQuality(types, typeMap, normalizeLxSourceQuality(item || fallbackType), '');
+    return;
+  }
+  const type = normalizeLxSourceQuality(item.type || item.quality || item.id || item.value || fallbackType);
+  const size = item.size || item.sizeText || item.filesize || item.fileSize || item.FileSize || lxSizeFormat(item.info && item.info.filesize);
+  const hash = item.hash || item.Hash || item.FileHash || '';
+  const label = item.label || item.title || item.displayName || item.qualityName || item.quality_name || '';
+  addLXQuality(types, typeMap, type, size, { hash, label });
+}
+
+function addLXQualitiesFromMap(types, typeMap, map) {
+  if (!map || typeof map !== 'object') return;
+  Object.keys(map).forEach(key => {
+    const meta = map[key];
+    if (meta === false || meta == null) return;
+    if (meta && typeof meta === 'object') addLXQualityFromObject(types, typeMap, Object.assign({ type: key }, meta), key);
+    else addLXQuality(types, typeMap, normalizeLxSourceQuality(key), '');
+  });
+}
+
+function kgQualityTypeFromLevel(level, quality) {
+  const raw = String(quality || '').toLowerCase().trim();
+  if (raw === '128') return '128k';
+  if (raw === '320') return '320k';
+  if (raw === 'flac') return 'flac';
+  if (raw === 'high') return 'hires';
+  if (raw === 'dolby' || raw === 'viper_atmos') return 'atmos';
+  if (raw === 'viper_clear') return 'master';
+  if (raw === 'viper_tape') return '';
+  const n = Number(level) || 0;
+  if (n === 2) return '128k';
+  if (n === 4) return '320k';
+  if (n === 5) return 'flac';
+  if (n === 6) return 'hires';
+  return normalizeLxSourceQuality(quality || (n ? ('kg_level_' + n) : ''));
+}
+
+function addKugouRelateGoodsQuality(types, typeMap, item) {
+  if (!item || typeof item !== 'object') return;
+  const quality = item.quality || item.type || '';
+  const type = kgQualityTypeFromLevel(item.level, quality);
+  const size = item.size || item.filesize || item.fileSize || lxSizeFormat(item.info && item.info.filesize);
+  const hash = item.hash || item.Hash || '';
+  const label = item.qualityName || item.quality_name || item.label || item.title || '';
+  addLXQuality(types, typeMap, type, size, { hash, label, requireEvidence: true });
+}
+
+async function getKugouBatchMusicQualityInfo(hashList) {
+  const hashes = Array.from(new Set((hashList || []).map(hash => String(hash || '').trim()).filter(Boolean)));
+  const qualityInfoMap = {};
+  if (!hashes.length) return qualityInfoMap;
+  const resources = hashes.map(hash => ({ id: 0, type: 'audio', hash }));
+  const body = JSON.stringify({
+    behavior: 'play',
+    clientver: '20049',
+    resource: resources,
+    area_code: '1',
+    quality: '128',
+    qualities: ['128', '320', 'flac', 'high', 'dolby', 'viper_atmos', 'viper_tape', 'viper_clear'],
+  });
+  const json = await requestJson(
+    'https://gateway.kugou.com/goodsmstore/v1/get_res_privilege?appid=1005&clientver=20049&clienttime=' + Date.now() + '&mid=NeZha',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': UA,
+        Referer: 'https://www.kugou.com/',
+      },
+    },
+    body
+  );
+  const list = json && Array.isArray(json.data) ? json.data : [];
+  list.forEach((songData, index) => {
+    const hash = hashes[index];
+    const types = [];
+    const _types = {};
+    if (songData && Array.isArray(songData.relate_goods)) {
+      songData.relate_goods.forEach(item => addKugouRelateGoodsQuality(types, _types, item));
+    }
+    qualityInfoMap[hash] = { types, _types };
+  });
+  return qualityInfoMap;
+}
+
+function lxQualityTypesFromRaw(source, raw) {
+  raw = raw || {};
+  const types = [];
+  const typeMap = {};
+  if (raw.meta && typeof raw.meta === 'object') {
+    if (Array.isArray(raw.meta.qualitys)) raw.meta.qualitys.forEach(item => addLXQualityFromObject(types, typeMap, item));
+    addLXQualitiesFromMap(types, typeMap, raw.meta._qualitys);
+  }
+  if (Array.isArray(raw.types)) {
+    raw.types.forEach(item => addLXQualityFromObject(types, typeMap, item));
+  }
+  addLXQualitiesFromMap(types, typeMap, raw._types);
+  if (Array.isArray(raw.qualitys)) raw.qualitys.forEach(item => addLXQualityFromObject(types, typeMap, item));
+  if (Array.isArray(raw.qualities)) raw.qualities.forEach(item => addLXQualityFromObject(types, typeMap, item));
+
+  if (source === 'kw' && raw.N_MINFO) {
+    String(raw.N_MINFO).split(';').forEach(info => {
+      const m = String(info || '').match(/level:(\w+),bitrate:(\d+),format:(\w+),size:([\w.]+)/);
+      if (!m) return;
+      const size = m[4];
+      if (m[2] === '20900') addLXQuality(types, typeMap, 'master', size);
+      else if (m[2] === '20501') addLXQuality(types, typeMap, 'atmos_plus', size);
+      else if (m[2] === '20201') addLXQuality(types, typeMap, 'atmos', size);
+      else if (m[2] === '4000') addLXQuality(types, typeMap, 'hires', size);
+      else if (m[2] === '2000') addLXQuality(types, typeMap, 'flac', size);
+      else if (m[2] === '320') addLXQuality(types, typeMap, '320k', size);
+      else if (m[2] === '128') addLXQuality(types, typeMap, '128k', size);
+    });
+    types.reverse();
+  } else if (source === 'kg') {
+    addLXQuality(types, typeMap, '128k', lxSizeFormat(raw.FileSize), { hash: raw.FileHash, requireEvidence: true });
+    addLXQuality(types, typeMap, '320k', lxSizeFormat(raw.HQFileSize), { hash: raw.HQFileHash, requireEvidence: true });
+    addLXQuality(types, typeMap, 'flac', lxSizeFormat(raw.SQFileSize), { hash: raw.SQFileHash, requireEvidence: true });
+    addLXQuality(types, typeMap, 'hires', lxSizeFormat(raw.ResFileSize), { hash: raw.ResFileHash, requireEvidence: true });
+    if (raw.audio_info && typeof raw.audio_info === 'object') {
+      const audio = raw.audio_info;
+      addLXQuality(types, typeMap, '128k', lxSizeFormat(audio.filesize), { hash: audio.hash, requireEvidence: true });
+      addLXQuality(types, typeMap, '320k', lxSizeFormat(audio.filesize_320), { hash: audio.hash_320, requireEvidence: true });
+      addLXQuality(types, typeMap, 'ape', lxSizeFormat(audio.filesize_ape), { hash: audio.hash_ape, requireEvidence: true });
+      addLXQuality(types, typeMap, 'flac', lxSizeFormat(audio.filesize_flac), { hash: audio.hash_flac, requireEvidence: true });
+      addLXQuality(types, typeMap, 'hires', lxSizeFormat(audio.filesize_high), { hash: audio.hash_high, requireEvidence: true });
+    }
+    if (Array.isArray(raw.relate_goods)) raw.relate_goods.forEach(item => addKugouRelateGoodsQuality(types, typeMap, item));
+  } else if (source === 'mg' && Array.isArray(raw.audioFormats)) {
+    raw.audioFormats.forEach(format => {
+      const size = lxSizeFormat(format && (format.asize != null ? format.asize : format.isize));
+      if (!format) return;
+      if (format.formatType === 'PQ') addLXQuality(types, typeMap, '128k', size);
+      else if (format.formatType === 'HQ') addLXQuality(types, typeMap, '320k', size);
+      else if (format.formatType === 'SQ') addLXQuality(types, typeMap, 'flac', size);
+      else if (format.formatType === 'ZQ24') addLXQuality(types, typeMap, 'hires', size);
+    });
+  }
+  return { types, _types: typeMap };
+}
+
+function lxIntervalSeconds(raw, durationMs) {
+  const interval = raw && raw.interval;
+  if (typeof interval === 'number') return interval;
+  if (typeof interval === 'string') {
+    const parts = interval.split(':').map(v => parseInt(v, 10));
+    if (parts.length === 2 && parts.every(n => Number.isFinite(n))) return parts[0] * 60 + parts[1];
+    if (parts.length === 3 && parts.every(n => Number.isFinite(n))) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  }
+  if (raw && raw._interval) return Number(raw._interval) || 0;
+  return durationMs ? Math.round(durationMs / 1000) : 0;
+}
+
+function normalizeLxSourceQuality(value) {
+  const raw = String(value || '').toLowerCase().trim().replace(/\s+/g, '').replace(/-/g, '');
+  if (!raw) return '';
+  if (['jymaster', 'master', 'studio', 'svip'].includes(raw)) return 'master';
+  if (['atmosplus', 'atmos_plus', 'dolbyatmosplus'].includes(raw)) return 'atmos_plus';
+  if (['atmos', 'dolby', 'dolbyatmos'].includes(raw)) return 'atmos';
+  if (['hires', 'highres', 'hr'].includes(raw)) return 'hires';
+  if (['flac24bit', 'flac24', 'flac32bit', 'flac32', '32bit', '24bit', '24bitflac', 'zq24'].includes(raw)) return 'hires';
+  if (['lossless', 'flac', 'sq'].includes(raw)) return 'flac';
+  if (raw === 'ape') return 'ape';
+  if (raw === 'wav') return 'wav';
+  if (['192', '192k'].includes(raw)) return '192k';
+  if (['exhigh', 'high', 'hq', '320', '320k'].includes(raw)) return '320k';
+  if (['standard', 'normal', 'std', '128', '128k'].includes(raw)) return '128k';
+  return raw;
+}
+
+function normalizeLxRequestedQuality(value) {
+  return normalizeLxSourceQuality(value) || normalizeQualityPreference(value);
+}
+
+function lxQualityToSourceType(quality, supported) {
+  const requested = normalizeLxRequestedQuality(quality);
+  const rawRequested = String(quality || '').trim();
+  const rawSupported = Array.isArray(supported) && supported.length ? supported.map(item => String(item || '').trim()).filter(Boolean) : [];
+  const normalizedSupported = rawSupported.map(item => ({ raw: item, normalized: normalizeLxSourceQuality(item) }));
+  if (rawRequested) {
+    const direct = rawSupported.find(item => item.toLowerCase() === rawRequested.toLowerCase());
+    if (direct) return direct;
+  }
+  if (requested) {
+    const alias = normalizedSupported.find(item => item.normalized === requested);
+    if (alias) return alias.raw;
+    return requested;
+  }
+  return rawRequested || rawSupported[0] || '128k';
+}
+
+function mapLxSong(source, raw) {
+  raw = raw || {};
+  const songmid = raw.songmid || raw.songId || raw.id || raw.Audioid || '';
+  const hash = raw.hash || raw.FileHash || '';
+  const artist = stripHtmlTags(raw.artist || raw.singer || raw.singers || '');
+  const artists = Array.isArray(raw.artists) ? raw.artists : lxArtistsFromText(artist);
+  const name = stripHtmlTags(raw.name || raw.songName || raw.SongName || '');
+  const album = stripHtmlTags(raw.album || raw.albumName || raw.AlbumName || '');
+  const cover = normalizeLxCoverUrl(raw.cover || raw.img || raw.pic || raw.Image || raw.AlbumImage || '', 500);
+  const duration = raw.duration || lxFormatDurationMs(raw._interval || raw.interval);
+  const qualityInfo = lxQualityTypesFromRaw(source, raw);
+  const lxMusicInfo = Object.assign({}, raw, {
+    source,
+    songmid,
+    mid: raw.mid || raw.songmid || songmid,
+    hash,
+    name,
+    singer: artist,
+    artist,
+    albumName: album,
+    album,
+    albumId: raw.albumId || raw.albumMid || '',
+    img: cover || null,
+    cover,
+    interval: raw.interval || lxIntervalSeconds(raw, duration),
+    _interval: raw._interval || lxIntervalSeconds(raw, duration),
+    types: qualityInfo.types,
+    _types: qualityInfo._types,
+    typeUrl: raw.typeUrl || {},
+  });
+  return {
+    provider: 'lx',
+    source: 'lx',
+    type: 'lx',
+    lxSource: source,
+    lxSourceName: LX_SOURCE_NAMES[source] || source.toUpperCase(),
+    id: source + ':' + (songmid || hash || crypto.createHash('md5').update(name + '|' + artist + '|' + album).digest('hex').slice(0, 12)),
+    songmid,
+    hash,
+    mid: raw.mid || raw.songmid || songmid,
+    mediaMid: raw.mediaMid || raw.strMediaMid || raw.media_mid || '',
+    qqId: raw.qqId || raw.songId || '',
+    copyrightId: raw.copyrightId || '',
+    name,
+    artist,
+    artists,
+    album,
+    albumId: raw.albumId || raw.albumMid || '',
+    cover,
+    duration,
+    playable: false,
+    fee: 0,
+    lxMusicInfo,
+  };
+}
+
+const LX_SOURCE_NAMES = {
+  kw: '酷我',
+  kg: '酷狗',
+  tx: 'QQ',
+  wy: '网易云',
+};
+const LX_DEFAULT_SEARCH_SOURCES = ['kw', 'kg', 'wy', 'tx'];
+const LX_SEARCH_SOURCE_TIMEOUT_MS = Math.max(900, Math.min(8000, Number(process.env.MINERADIO_LX_SEARCH_TIMEOUT_MS) || 2600));
+const lxSearchSourceCache = new Map();
+
+function lxSearchCacheKey(source, keywords, limit) {
+  return [source, String(keywords || '').trim().toLowerCase(), limit].join('\x1f');
+}
+
+async function runCachedLXSourceSearch(source, keywords, limit) {
+  const key = lxSearchCacheKey(source, keywords, limit);
+  const cached = lxSearchSourceCache.get(key);
+  if (cached && Date.now() - cached.time < 3 * 60 * 1000) return cached.list.map(song => Object.assign({}, song));
+  let list;
+  if (source === 'kw') list = await handleLXKuwoSearch(keywords, limit);
+  else if (source === 'kg') list = await handleLXKugouSearch(keywords, limit);
+  else if (source === 'mg') list = await handleLXMiguSearch(keywords, limit);
+  else list = await handleLXMappedSearch(source, keywords, limit);
+  list = Array.isArray(list) ? list : [];
+  lxSearchSourceCache.set(key, { time: Date.now(), list: list.map(song => Object.assign({}, song)) });
+  if (lxSearchSourceCache.size > 80) {
+    const now = Date.now();
+    for (const [cacheKey, item] of lxSearchSourceCache) {
+      if (now - item.time > 90 * 1000 || lxSearchSourceCache.size > 64) lxSearchSourceCache.delete(cacheKey);
+    }
+  }
+  return list;
+}
+
+function settleLXSourceSearch(source, promise, timeoutMs) {
+  const started = Date.now();
+  return Promise.race([
+    promise.then(value => ({
+      status: 'fulfilled',
+      source,
+      value: Array.isArray(value) ? value : [],
+      elapsedMs: Date.now() - started,
+    })).catch(reason => ({
+      status: 'rejected',
+      source,
+      reason,
+      value: [],
+      elapsedMs: Date.now() - started,
+    })),
+    new Promise(resolve => setTimeout(() => resolve({
+      status: 'timeout',
+      source,
+      reason: new Error('LX_SOURCE_SEARCH_TIMEOUT'),
+      value: [],
+      elapsedMs: Date.now() - started,
+    }), timeoutMs)),
+  ]);
+}
+
+async function handleLXKuwoSearch(keywords, limit) {
+  const u = 'http://search.kuwo.cn/r.s?client=kt&all=' + encodeURIComponent(keywords) +
+    '&pn=0&rn=' + encodeURIComponent(limit) +
+    '&uid=794762570&ver=kwplayer_ar_9.2.2.1&vipver=1&show_copyright_off=1&newver=1&ft=music&cluster=0&strategy=2012&encoding=utf8&rformat=json&vermerge=1&mobi=1&issubtitle=1';
+  const json = await requestJson(u, { headers: { 'User-Agent': UA, Referer: 'http://www.kuwo.cn/' } });
+  const raw = Array.isArray(json && json.abslist) ? json.abslist : [];
+  return raw.map(item => mapLxSong('kw', {
+    songmid: String(item.MUSICRID || '').replace(/^MUSIC_/, ''),
+    name: item.SONGNAME,
+    singer: item.ARTIST,
+    albumName: item.ALBUM,
+    albumId: item.ALBUMID,
+    interval: Number(item.DURATION) || 0,
+    N_MINFO: item.N_MINFO,
+  })).filter(song => song.songmid && song.name);
+}
+
+async function handleLXKugouSearch(keywords, limit) {
+  const u = 'https://songsearch.kugou.com/song_search_v2?keyword=' + encodeURIComponent(keywords) +
+    '&page=1&pagesize=' + encodeURIComponent(limit) + '&userid=0&clientver=&platform=WebFilter&filter=2&iscorrection=1&privilege_filter=0&area_code=1';
+  const json = await requestJson(u, { headers: { 'User-Agent': UA, Referer: 'https://www.kugou.com/' } });
+  const raw = json && json.data && Array.isArray(json.data.lists) ? json.data.lists : [];
+  const rows = [];
+  const seen = new Set();
+  raw.forEach(item => {
+    [item].concat(Array.isArray(item.Grp) ? item.Grp : []).forEach(data => {
+      const key = data && (data.Audioid + ':' + data.FileHash);
+      if (!data || !data.Audioid || !data.FileHash || seen.has(key)) return;
+      seen.add(key);
+      rows.push(data);
+    });
+  });
+  let qualityInfoMap = {};
+  try {
+    qualityInfoMap = await getKugouBatchMusicQualityInfo(rows.slice(0, limit).map(item => item.FileHash));
+  } catch (e) {
+    warnLXOptionalUserApi('[LXKugouQualityDetail]', 'kg', e);
+  }
+  const out = [];
+  rows.forEach(data => {
+      const qualityInfo = qualityInfoMap[data.FileHash] || {};
+      out.push(mapLxSong('kg', {
+        songmid: data.Audioid,
+        hash: data.FileHash,
+        name: data.SongName,
+        singer: Array.isArray(data.Singers) ? data.Singers.map(s => s && s.name).filter(Boolean).join(' / ') : data.SingerName,
+        albumName: data.AlbumName,
+        albumId: data.AlbumID,
+        interval: Number(data.Duration) || 0,
+        FileHash: data.FileHash,
+        FileSize: data.FileSize,
+        HQFileHash: data.HQFileHash,
+        HQFileSize: data.HQFileSize,
+        SQFileHash: data.SQFileHash,
+        SQFileSize: data.SQFileSize,
+        ResFileHash: data.ResFileHash,
+        ResFileSize: data.ResFileSize,
+        types: Array.isArray(qualityInfo.types) && qualityInfo.types.length ? qualityInfo.types : data.types,
+        _types: qualityInfo._types && Object.keys(qualityInfo._types).length ? qualityInfo._types : data._types,
+        img: data.Image || data.AlbumImage || '',
+      }));
+  });
+  return out.filter(song => song.hash && song.name).slice(0, limit);
+}
+
+function createMiguSignature(time, keywords) {
+  const deviceId = '963B7AA0D21511ED807EE5846EC87D20';
+  const signatureMd5 = '6cdc72a439cef99a3418d2a78aa28c73';
+  const raw = `${keywords}${signatureMd5}yyapp2d16148780a1dcc7408e06336b98cfd50${deviceId}${time}`;
+  return {
+    deviceId,
+    sign: crypto.createHash('md5').update(raw).digest('hex'),
+  };
+}
+
+async function handleLXMiguSearch(keywords, limit) {
+  const time = Date.now().toString();
+  const signData = createMiguSignature(time, keywords);
+  const u = 'https://jadeite.migu.cn/music_search/v3/search/searchAll?isCorrect=0&isCopyright=1' +
+    '&searchSwitch=%7B%22song%22%3A1%2C%22album%22%3A0%2C%22singer%22%3A0%2C%22tagSong%22%3A1%2C%22mvSong%22%3A0%2C%22bestShow%22%3A1%2C%22songlist%22%3A0%2C%22lyricSong%22%3A0%7D' +
+    '&pageSize=' + encodeURIComponent(limit) + '&text=' + encodeURIComponent(keywords) + '&pageNo=1&sort=0&sid=USS';
+  const json = await requestJson(u, {
+    headers: {
+      uiVersion: 'A_music_3.6.1',
+      deviceId: signData.deviceId,
+      timestamp: time,
+      sign: signData.sign,
+      channel: '0146921',
+      'User-Agent': 'Mozilla/5.0 (Linux; Android 11; MI 11) AppleWebKit/534.30 Mobile Safari/534.30',
+    },
+  });
+  const groups = json && json.songResultData && Array.isArray(json.songResultData.resultList) ? json.songResultData.resultList : [];
+  const out = [];
+  const seen = new Set();
+  groups.forEach(group => {
+    (Array.isArray(group) ? group : []).forEach(item => {
+      if (!item || !item.songId || !item.copyrightId || seen.has(item.copyrightId)) return;
+      seen.add(item.copyrightId);
+      let img = item.img3 || item.img2 || item.img1 || '';
+      if (img && !/^https?:\/\//i.test(img)) img = 'http://d.musicapp.migu.cn' + img;
+      out.push(mapLxSong('mg', {
+        songmid: item.songId,
+        copyrightId: item.copyrightId,
+        name: item.name,
+        singer: Array.isArray(item.singerList) ? item.singerList.map(s => s && (s.name || s.singerName)).filter(Boolean).join(' / ') : '',
+        albumName: item.album,
+        albumId: item.albumId,
+        interval: Number(item.duration) || 0,
+        img,
+        audioFormats: item.audioFormats,
+        lrcUrl: item.lrcUrl,
+        mrcUrl: item.mrcurl,
+        trcUrl: item.trcUrl,
+      }));
+    });
+  });
+  return out.filter(song => song.songmid && song.name).slice(0, limit);
+}
+
+async function handleLXMappedSearch(source, keywords, limit) {
+  if (source === 'wy') {
+    const songs = await handleSearch(keywords, limit);
+    return songs.map(song => mapLxSong('wy', {
+      songmid: song.id,
+      id: song.id,
+      name: song.name,
+      singer: song.artist,
+      artists: song.artists,
+      albumName: song.album,
+      img: song.cover,
+      duration: song.duration,
+      types: song.types,
+      _types: song._types,
+    }));
+  }
+  if (source === 'tx') {
+    const songs = await handleQQSearch(keywords, limit);
+    return songs.map(song => mapLxSong('tx', {
+      songmid: song.mid || song.songmid || song.id,
+      mid: song.mid || song.songmid,
+      songId: song.qqId,
+      strMediaMid: song.mediaMid,
+      name: song.name,
+      singer: song.artist,
+      artists: song.artists,
+      albumName: song.album,
+      albumMid: song.albumMid,
+      img: song.cover,
+      duration: song.duration,
+      types: song.types,
+      _types: song._types,
+    }));
+  }
+  return [];
+}
+
+async function handleLXSearch(keywords, limit, sources, opts) {
+  opts = opts || {};
+  const kw = String(keywords || '').trim();
+  if (!kw) return [];
+  const perSourceLimit = Math.max(4, Math.min(12, parseInt(limit || '8', 10) || 8));
+  const timeoutMs = Math.max(700, Math.min(8000, Number(opts.timeoutMs) || LX_SEARCH_SOURCE_TIMEOUT_MS));
+  const hasExplicitSources = String(sources || '').trim() !== '';
+  const requested = String(sources || LX_DEFAULT_SEARCH_SOURCES.join(','))
+    .split(',')
+    .map(s => s.trim().toLowerCase())
+    .filter(s => LX_SOURCE_NAMES[s]);
+  if (hasExplicitSources && !requested.length) {
+    const empty = [];
+    Object.defineProperty(empty, '_lxSearchMeta', { value: { partial: false, timeoutMs, sources: {} }, enumerable: false });
+    return empty;
+  }
+  const uniqueSources = Array.from(new Set(requested.length ? requested : LX_DEFAULT_SEARCH_SOURCES));
+  const tasks = uniqueSources.map(source => settleLXSourceSearch(
+    source,
+    runCachedLXSourceSearch(source, kw, perSourceLimit),
+    timeoutMs
+  ));
+  const settled = await Promise.all(tasks);
+  const maxResult = Math.max(8, Math.min(36, parseInt(limit || '18', 10) || 18));
+  const buckets = [];
+  const seen = new Set();
+  const meta = { partial: false, timeoutMs, sources: {} };
+  settled.forEach((result) => {
+    meta.sources[result.source] = {
+      status: result.status,
+      count: Array.isArray(result.value) ? result.value.length : 0,
+      elapsedMs: result.elapsedMs || 0,
+    };
+    if (result.status !== 'fulfilled') {
+      meta.partial = true;
+      console.warn('[LXSearch]', result.source, result.reason && result.reason.message || result.reason);
+      return;
+    }
+    const bucket = [];
+    (result.value || []).forEach(song => {
+      const key = song && (song.lxSource + ':' + (song.songmid || song.hash || song.name + '|' + song.artist));
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      bucket.push(song);
+    });
+    if (bucket.length) buckets.push(bucket);
+  });
+  const out = [];
+  for (let i = 0; out.length < maxResult; i++) {
+    let added = false;
+    for (const bucket of buckets) {
+      if (out.length >= maxResult) break;
+      if (i < bucket.length) {
+        out.push(bucket[i]);
+        added = true;
+      }
+    }
+    if (!added) break;
+  }
+  Object.defineProperty(out, '_lxSearchMeta', { value: meta, enumerable: false });
+  return out;
+}
+
+const LX_EVENT_NAMES = {
+  inited: 'inited',
+  request: 'request',
+  updateAlert: 'updateAlert',
+};
+const LX_USER_API_SUPPORT_ACTIONS = {
+  kw: ['musicUrl'],
+  kg: ['musicUrl'],
+  tx: ['musicUrl'],
+  wy: ['musicUrl'],
+  local: ['musicUrl', 'lyric', 'pic'],
+};
+let lxUserApiCache = null;
+
+function normalizeLXUserApiQualitys(qualitys) {
+  const list = [];
+  function add(value) {
+    if (value && typeof value === 'object') value = value.type || value.quality || value.name || value.id || value.value;
+    value = String(value || '').trim();
+    if (value && !list.includes(value)) list.push(value);
+  }
+  if (Array.isArray(qualitys)) qualitys.forEach(add);
+  else if (qualitys && typeof qualitys === 'object') Object.keys(qualitys).forEach(key => {
+    if (qualitys[key] !== false && qualitys[key] != null) add(key);
+  });
+  else add(qualitys);
+  return list;
+}
+
+function normalizeLXUserApiSources(sources) {
+  const out = {};
+  sources = sources && typeof sources === 'object' ? sources : {};
+  Object.keys(LX_USER_API_SUPPORT_ACTIONS).forEach(source => {
+    const info = sources[source];
+    if (!info || info.type !== 'music') return;
+    const declaredActions = Array.isArray(info.actions) ? info.actions : [];
+    const actions = LX_USER_API_SUPPORT_ACTIONS[source].filter(action => declaredActions.includes(action));
+    const qualitys = normalizeLXUserApiQualitys(info.qualitys);
+    if (!actions.length) return;
+    out[source] = {
+      name: info.name || source,
+      type: 'music',
+      actions,
+      qualitys,
+    };
+  });
+  return out;
+}
+
+function lxSourceScriptCandidates() {
+  const candidates = [];
+  if (LX_SOURCE_FILE) candidates.push(LX_SOURCE_FILE);
+  candidates.push(path.join(__dirname, 'lx-source.js'));
+  candidates.push(path.join(__dirname, 'lx-music-source.js'));
+  candidates.push(path.join(__dirname, 'lx-sources', 'source.js'));
+  return candidates.map(p => path.resolve(p));
+}
+
+function resolveLXSourceScriptPath() {
+  return lxSourceScriptCandidates().find(file => {
+    try { return fs.existsSync(file) && fs.statSync(file).isFile(); }
+    catch (e) { return false; }
+  }) || '';
+}
+
+function writableLXSourceScriptPath() {
+  const target = path.resolve(LX_SOURCE_FILE || path.join(__dirname, 'lx-source.js'));
+  return target;
+}
+
+function validateLXSourceScript(script) {
+  script = String(script || '').replace(/^\uFEFF/, '');
+  if (!script.trim()) throw new Error('LX_SOURCE_EMPTY');
+  if (Buffer.byteLength(script, 'utf8') > 2 * 1024 * 1024) throw new Error('LX_SOURCE_TOO_LARGE');
+  if (!/@name\s+/.test(script.slice(0, 4096))) throw new Error('LX_SOURCE_MISSING_NAME');
+  if (!/EVENT_NAMES|globalThis\.lx|lx\.send|send\(EVENT_NAMES\.inited/.test(script)) throw new Error('LX_SOURCE_FORMAT_UNCLEAR');
+  return script;
+}
+
+function saveLXSourceScript(script) {
+  const content = validateLXSourceScript(script);
+  const target = writableLXSourceScriptPath();
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const tmp = target + '.tmp';
+  fs.writeFileSync(tmp, content, 'utf8');
+  fs.renameSync(tmp, target);
+  lxUserApiCache = null;
+  return target;
+}
+
+function clearLXSourceScript() {
+  const targets = Array.from(new Set(lxSourceScriptCandidates()));
+  const removed = [];
+  targets.forEach(file => {
+    try {
+      if (fs.existsSync(file) && fs.statSync(file).isFile()) {
+        fs.unlinkSync(file);
+        removed.push(file);
+      }
+    } catch (e) {
+      console.warn('[LXSourceClear]', file, e.message);
+    }
+  });
+  lxUserApiCache = null;
+  return removed;
+}
+
+function parseLXResponseBody(text, contentType) {
+  const raw = String(text || '');
+  const trimmed = raw.trim();
+  if (/json/i.test(String(contentType || '')) || /^[\[{]/.test(trimmed)) {
+    try { return JSON.parse(trimmed); } catch (e) {}
+  }
+  return raw;
+}
+
+function lxScriptRequest(targetUrl, options, callback) {
+  options = options || {};
+  callback = typeof callback === 'function' ? callback : function() {};
+  const method = String(options.method || (options.body || options.data || options.form || options.formData ? 'POST' : 'GET')).toUpperCase();
+  const headers = Object.assign({}, options.headers || {});
+  let body = options.body || options.data || null;
+  if (!body && options.form && typeof options.form === 'object') {
+    body = new URLSearchParams();
+    Object.keys(options.form).forEach(key => {
+      if (options.form[key] != null) body.append(key, String(options.form[key]));
+    });
+    if (!headers['Content-Type'] && !headers['content-type']) headers['Content-Type'] = 'application/x-www-form-urlencoded;charset=UTF-8';
+  } else if (!body && options.formData && typeof options.formData === 'object') {
+    body = new URLSearchParams();
+    Object.keys(options.formData).forEach(key => {
+      if (options.formData[key] != null) body.append(key, String(options.formData[key]));
+    });
+    if (!headers['Content-Type'] && !headers['content-type']) headers['Content-Type'] = 'application/x-www-form-urlencoded;charset=UTF-8';
+  }
+  if (body && typeof body === 'object' && !Buffer.isBuffer(body) && !(body instanceof URLSearchParams)) {
+    body = JSON.stringify(body);
+    if (!headers['Content-Type'] && !headers['content-type']) headers['Content-Type'] = 'application/json';
+  }
+  const timeoutMs = Math.max(1000, Math.min(60000, Number(options.timeout) || 12000));
+  fetchWithTimeout(targetUrl, { method, headers, body }, timeoutMs).then(async response => {
+    const text = await response.text();
+    const resp = {
+      statusCode: response.status,
+      status: response.status,
+      statusMessage: response.statusText,
+      headers: Object.fromEntries(response.headers.entries()),
+      body: parseLXResponseBody(text, response.headers.get('content-type')),
+      rawBody: text,
+      raw: Buffer.from(text),
+    };
+    callback(null, resp, resp.body);
+  }).catch(err => callback(err));
+}
+
+function createLXScriptUtils() {
+  return {
+    crypto: {
+      aesEncrypt(buffer, mode, key, iv) {
+        const cipher = crypto.createCipheriv(mode, key, iv);
+        return Buffer.concat([cipher.update(buffer), cipher.final()]);
+      },
+      rsaEncrypt(buffer, key) {
+        const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+        const padded = Buffer.concat([Buffer.alloc(Math.max(0, 128 - buf.length)), buf]);
+        return crypto.publicEncrypt({ key, padding: crypto.constants.RSA_NO_PADDING }, padded);
+      },
+      randomBytes(size) {
+        return crypto.randomBytes(size);
+      },
+      md5(value) {
+        return crypto.createHash('md5').update(String(value)).digest('hex');
+      },
+    },
+    buffer: {
+      from(...args) {
+        return Buffer.from(...args);
+      },
+      bufToString(buf, format) {
+        return Buffer.from(buf, 'binary').toString(format);
+      },
+    },
+    zlib: {
+      inflate(buf) {
+        return new Promise((resolve, reject) => {
+          zlib.inflate(buf, (err, data) => err ? reject(new Error(err.message)) : resolve(data));
+        });
+      },
+      deflate(data) {
+        return new Promise((resolve, reject) => {
+          zlib.deflate(data, (err, buf) => err ? reject(new Error(err.message)) : resolve(buf));
+        });
+      },
+    },
+  };
+}
+
+function createLXScriptContext(scriptFile) {
+  const events = {};
+  const apiInfo = { status: false, sources: {}, openDevTools: false, updateAlert: null };
+  const lxApi = {
+    version: '2.0.0',
+    compatVersion: 'mineradio-1',
+    env: 'desktop',
+    EVENT_NAMES: LX_EVENT_NAMES,
+    currentScriptInfo: { rawScript: fs.readFileSync(scriptFile, 'utf8') },
+    utils: createLXScriptUtils(),
+    request: lxScriptRequest,
+    on(eventName, handler) {
+      if (!Object.values(LX_EVENT_NAMES).includes(eventName)) return Promise.reject(new Error('The event is not supported: ' + eventName));
+      if (eventName !== LX_EVENT_NAMES.request) return Promise.reject(new Error('The event is not supported: ' + eventName));
+      if (typeof handler === 'function') events[eventName] = handler;
+      return Promise.resolve();
+    },
+    send(eventName, datas) {
+      if (eventName === LX_EVENT_NAMES.inited) {
+        apiInfo.status = datas && datas.status !== false;
+        apiInfo.sources = normalizeLXUserApiSources(datas && datas.sources);
+        apiInfo.openDevTools = !!(datas && datas.openDevTools);
+      } else if (eventName === LX_EVENT_NAMES.updateAlert) {
+        apiInfo.updateAlert = datas || null;
+      } else {
+        return Promise.reject(new Error('The event is not supported: ' + eventName));
+      }
+      return Promise.resolve();
+    },
+  };
+  const sandbox = {
+    console,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+    Promise,
+    URL,
+    URLSearchParams,
+    TextEncoder,
+    TextDecoder,
+    encodeURIComponent,
+    decodeURIComponent,
+    Buffer,
+    FormData,
+    Headers,
+    Request,
+    Response,
+    atob: value => Buffer.from(String(value), 'base64').toString('binary'),
+    btoa: value => Buffer.from(String(value), 'binary').toString('base64'),
+    lx: lxApi,
+  };
+  sandbox.globalThis = sandbox;
+  sandbox.lx = lxApi;
+  return { sandbox, events, apiInfo, script: lxApi.currentScriptInfo.rawScript };
+}
+
+function loadLXUserApi() {
+  const scriptFile = resolveLXSourceScriptPath();
+  if (!scriptFile) return { ok: false, error: 'LX_SOURCE_NOT_CONFIGURED', message: '未找到落雪自定义源脚本，请设置 MINERADIO_LX_SOURCE_FILE 或把脚本放到 lx-source.js。', sources: {} };
+  let stat;
+  try { stat = fs.statSync(scriptFile); } catch (e) { return { ok: false, error: e.message, sources: {} }; }
+  if (lxUserApiCache && lxUserApiCache.file === scriptFile && lxUserApiCache.mtimeMs === stat.mtimeMs) return lxUserApiCache.api;
+  const context = createLXScriptContext(scriptFile);
+  try {
+    vm.runInNewContext(context.script, context.sandbox, { filename: scriptFile, timeout: 5000 });
+    if (!context.apiInfo.status || typeof context.events[LX_EVENT_NAMES.request] !== 'function') {
+      throw new Error('LX_SOURCE_INIT_FAILED');
+    }
+    const api = { ok: true, file: scriptFile, events: context.events, sources: context.apiInfo.sources || {} };
+    lxUserApiCache = { file: scriptFile, mtimeMs: stat.mtimeMs, api };
+    return api;
+  } catch (e) {
+    lxUserApiCache = null;
+    return { ok: false, file: scriptFile, error: e.message || 'LX_SOURCE_INIT_FAILED', sources: {} };
+  }
+}
+
+async function callLXUserApi(source, action, info) {
+  const api = loadLXUserApi();
+  if (!api.ok) {
+    const restriction = playbackRestriction('lx', 'source_not_configured', api.message || '落雪自定义源未配置，无法获取播放地址', 'configure_source', { error: api.error });
+    return { provider: 'lx', url: '', playable: false, reason: restriction.category, message: restriction.message, restriction, sources: api.sources || {} };
+  }
+  const handler = api.events[LX_EVENT_NAMES.request];
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('LX_SOURCE_TIMEOUT')), 15000));
+  const result = await Promise.race([
+    Promise.resolve(handler({ source, action, info })),
+    timeout,
+  ]);
+  return result;
+}
+
+function lxSourceInfoFor(source) {
+  const api = loadLXUserApi();
+  return api && api.ok && api.sources ? api.sources[source] : null;
+}
+
+function normalizeLXMusicInfo(source, info) {
+  const raw = info && typeof info === 'object' ? Object.assign({}, info) : {};
+  raw.source = source;
+  if (raw.hash === '') delete raw.hash;
+  if (!raw.songmid && raw.mid) raw.songmid = raw.mid;
+  if (!raw.songmid && raw.id && !String(raw.id).includes(':')) raw.songmid = raw.id;
+  if (!raw.hash && raw.FileHash) raw.hash = raw.FileHash;
+  if (!raw.singer && raw.artist) raw.singer = raw.artist;
+  if (!raw.albumName && raw.album) raw.albumName = raw.album;
+  if (!raw.img && raw.cover) raw.img = raw.cover;
+  if (!Array.isArray(raw.types)) raw.types = [];
+  if (!raw._types || typeof raw._types !== 'object') raw._types = {};
+  if (!raw.typeUrl || typeof raw.typeUrl !== 'object') raw.typeUrl = {};
+  return raw;
+}
+
+function extractLXMusicUrl(result) {
+  function from(value, depth) {
+    if (!value || depth > 4) return '';
+    if (typeof value === 'string') return /^https?:\/\//i.test(value) ? value : '';
+    if (typeof value !== 'object') return '';
+    if (typeof value.url === 'string' && /^https?:\/\//i.test(value.url)) return value.url;
+    if (typeof value.location === 'string' && /^https?:\/\//i.test(value.location)) return value.location;
+    return from(value.data, depth + 1) || from(value.body, depth + 1) || from(value.result, depth + 1);
+  }
+  return from(result, 0);
+}
+
+function extractLXLyricInfo(result) {
+  function from(value, depth) {
+    if (!value || depth > 5) return null;
+    if (typeof value === 'string') return value.trim() ? { lyric: value } : null;
+    if (typeof value !== 'object') return null;
+    const lyric = value.lyric || value.lrc || value.lrcText || value.text || '';
+    const tlyric = value.tlyric || value.tlrc || value.trans || value.transLyric || '';
+    const rlyric = value.rlyric || value.rlrc || '';
+    const yrc = value.yrc || '';
+    const lxlyric = value.lxlyric || '';
+    if (lyric || tlyric || rlyric || yrc || lxlyric) {
+      return { provider: 'lx', lyric: lyric || '', tlyric: tlyric || '', rlyric: rlyric || '', yrc: yrc || '', lxlyric: lxlyric || '' };
+    }
+    return from(value.data, depth + 1) || from(value.body, depth + 1) || from(value.result, depth + 1);
+  }
+  return from(result, 0) || { provider: 'lx', lyric: '' };
+}
+
+function extractLXPicUrl(result) {
+  function from(value, depth) {
+    if (!value || depth > 5) return '';
+    if (typeof value === 'string') return normalizeLxCoverUrl(value, 500);
+    if (typeof value !== 'object') return '';
+    const direct = value.url || value.pic || value.img || value.cover || value.location || '';
+    if (direct) return normalizeLxCoverUrl(direct, 500);
+    return from(value.data, depth + 1) || from(value.body, depth + 1) || from(value.result, depth + 1);
+  }
+  return from(result, 0);
+}
+
+function compactErrorMessage(error) {
+  if (!error) return '';
+  if (error.message) return error.message;
+  if (typeof error === 'string') return error;
+  try { return String(error); } catch (e) { return ''; }
+}
+
+function warnLXOptionalUserApi(label, source, error) {
+  const message = compactErrorMessage(error);
+  if (message && message !== 'undefined') {
+    console.warn(label, source, message);
+  } else if (process.env.MINERADIO_LX_DEBUG === '1') {
+    console.warn(label, source, 'empty response');
+  }
+}
+
+function lxDecodeName(value) {
+  return decodeHtmlEntities(String(value || ''));
+}
+
+const lxKuwoWordLrcTools = {
+  rxps: {
+    wordLine: /^(\[\d{1,2}:.*\d{1,4}\])\s*(\S+(?:\s+\S+)*)?\s*/,
+    tagLine: /\[(ver|ti|ar|al|offset|by|kuwo):\s*(\S+(?:\s+\S+)*)\s*\]/,
+    wordTimeAll: /<(-?\d+),(-?\d+)(?:,-?\d+)?>/g,
+    wordTime: /<(-?\d+),(-?\d+)(?:,-?\d+)?>/,
+  },
+  parse(lrc) {
+    const state = { isOK: true, offset: 1, offset2: 1, lines: [], tags: [] };
+    String(lrc || '').split(/\r\n|\r|\n/).forEach(line => {
+      if (!state.isOK) return;
+      if (line.length < 6) return;
+      let result = this.rxps.wordLine.exec(line);
+      if (result) {
+        const time = result[1];
+        let words = result[2] == null ? '' : result[2];
+        const wordTimes = words.match(this.rxps.wordTimeAll);
+        if (!wordTimes) return;
+        let previous = null;
+        wordTimes.forEach(timeStr => {
+          const m = this.rxps.wordTime.exec(timeStr);
+          if (!m) return;
+          const offset = parseInt(m[1], 10);
+          const offset2 = parseInt(m[2], 10);
+          const startTime = Math.abs((offset + offset2) / (state.offset * 2));
+          const endTime = Math.abs((offset - offset2) / (state.offset2 * 2)) + startTime;
+          const info = { startTime, endTime, timeStr: `<${startTime},${endTime - startTime}>` };
+          if (previous && startTime < previous.endTime) {
+            previous.endTime = Math.max(previous.startTime, startTime);
+            previous.newTimeStr = `<${previous.startTime},${previous.endTime - previous.startTime}>`;
+          }
+          words = words.replace(timeStr, info.timeStr);
+          if (previous && previous.newTimeStr) words = words.replace(previous.timeStr, previous.newTimeStr);
+          previous = info;
+        });
+        state.lines.push(time + words);
+        return;
+      }
+      result = this.rxps.tagLine.exec(line);
+      if (!result) return;
+      if (result[1] === 'kuwo') {
+        let content = result[2] || '';
+        if (content.includes('][')) content = content.substring(0, content.indexOf(']['));
+        const valueOf = parseInt(content, 8);
+        state.offset = Math.trunc(valueOf / 10);
+        state.offset2 = Math.trunc(valueOf % 10);
+        if (!state.offset || Number.isNaN(state.offset) || !state.offset2 || Number.isNaN(state.offset2)) state.isOK = false;
+      } else {
+        state.tags.push(line);
+      }
+    });
+    if (!state.lines.length) return '';
+    return (state.tags.length ? state.tags.join('\n') + '\n' : '') + state.lines.join('\n');
+  },
+};
+
+function lxDecodeKuwoLyric(raw, isGetLyricx) {
+  return new Promise((resolve, reject) => {
+    const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw || '');
+    if (buf.toString('utf8', 0, 10) !== 'tp=content') {
+      resolve('');
+      return;
+    }
+    const dataStart = buf.indexOf('\r\n\r\n') + 4;
+    zlib.inflate(buf.subarray(dataStart), (err, inflated) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      if (!isGetLyricx) {
+        resolve(iconv.decode(inflated, 'gb18030'));
+        return;
+      }
+      const key = Buffer.from('yeelion');
+      const encrypted = Buffer.from(inflated.toString(), 'base64');
+      const output = Buffer.alloc(encrypted.length);
+      for (let i = 0; i < encrypted.length; i++) output[i] = encrypted[i] ^ key[i % key.length];
+      resolve(iconv.decode(output, 'gb18030'));
+    });
+  });
+}
+
+function lxKuwoBuildLyricParams(id, isGetLyricx) {
+  let params = `user=12345,web,web,web&requester=localhost&req=1&rid=MUSIC_${id}`;
+  if (isGetLyricx) params += '&lrcx=1';
+  const key = Buffer.from('yeelion');
+  const input = Buffer.from(params);
+  const output = new Uint16Array(input.length);
+  for (let i = 0; i < input.length; i++) output[i] = key[i % key.length] ^ input[i];
+  return Buffer.from(output).toString('base64');
+}
+
+function lxKuwoParseLrc(lrc) {
+  const lines = String(lrc || '').split(/\r\n|\r|\n/);
+  const tags = [];
+  const lrcArr = [];
+  const lrcSet = new Set();
+  const lrcMain = [];
+  const lrcT = [];
+  let isLyricx = false;
+  lines.forEach(lineRaw => {
+    const line = lineRaw.trim();
+    const m = /^\[([\d:.]*)\]{1}/g.exec(line);
+    if (m) {
+      let time = m[1];
+      if (/\.\d\d$/.test(time)) time += '0';
+      lrcArr.push({ time, text: line.replace(/^\[([\d:.]*)\]{1}/g, '').trim() });
+    } else if (lxKuwoWordLrcTools.rxps.tagLine.test(line)) {
+      tags.push(line);
+    }
+  });
+  for (const item of lrcArr) {
+    if (lrcSet.has(item.time)) {
+      if (lrcMain.length < 2) continue;
+      const tItem = lrcMain.pop();
+      tItem.time = lrcMain[lrcMain.length - 1].time;
+      lrcT.push(tItem);
+      lrcMain.push(item);
+    } else {
+      lrcMain.push(item);
+      lrcSet.add(item.time);
+    }
+    if (!isLyricx && /^<-?\d+,-?\d+>/.test(item.text)) isLyricx = true;
+  }
+  if (!isLyricx && lrcT.length > lrcMain.length * 0.3 && lrcMain.length - lrcT.length > 6) throw new Error('Get lyric failed');
+  const transform = list => `${tags.join('\n')}\n${list.map(l => `[${l.time}]${l.text}\n`).join('')}`;
+  const info = {
+    lyric: lxDecodeName(transform(lrcMain)),
+    tlyric: lrcT.length ? lxDecodeName(transform(lrcT)).replace(lxKuwoWordLrcTools.rxps.wordTimeAll, '') : '',
+    rlyric: '',
+    lxlyric: '',
+  };
+  try { info.lxlyric = lxKuwoWordLrcTools.parse(info.lyric); } catch (e) { info.lxlyric = ''; }
+  info.lyric = info.lyric.replace(lxKuwoWordLrcTools.rxps.wordTimeAll, '');
+  if (!/\[\d{1,2}:.*\d{1,4}\]/.test(info.lyric)) throw new Error('Get lyric failed');
+  return info;
+}
+
+async function lxGetKuwoLyric(musicInfo) {
+  const id = musicInfo.songmid || musicInfo.mid || musicInfo.id;
+  if (!id) throw new Error('Missing Kuwo song id');
+  const raw = await lxFetchRaw(`http://newlyric.kuwo.cn/newlyric.lrc?${lxKuwoBuildLyricParams(id, true)}`);
+  const decoded = await lxDecodeKuwoLyric(raw, true);
+  return Object.assign({ provider: 'lx', source: 'kw' }, lxKuwoParseLrc(decoded));
+}
+
+async function lxGetKuwoPic(musicInfo) {
+  const id = musicInfo.songmid || musicInfo.mid || musicInfo.id;
+  if (!id) throw new Error('Missing Kuwo song id');
+  const body = await lxFetchText(`http://artistpicserver.kuwo.cn/pic.web?corp=kuwo&type=rid_pic&pictype=500&size=500&rid=${encodeURIComponent(id)}`);
+  const pic = /^http/i.test(String(body || '').trim()) ? String(body).trim() : '';
+  if (!pic) throw new Error('Pic get failed');
+  return { provider: 'lx', source: 'kw', cover: pic, pic };
+}
+
+function lxDecodeKugouKrc(data) {
+  const key = Buffer.from([0x40, 0x47, 0x61, 0x77, 0x5e, 0x32, 0x74, 0x47, 0x51, 0x36, 0x31, 0x2d, 0xce, 0xd2, 0x6e, 0x69], 'binary');
+  return new Promise((resolve, reject) => {
+    const buf = Buffer.from(String(data || ''), 'base64').subarray(4);
+    for (let i = 0; i < buf.length; i++) buf[i] = buf[i] ^ key[i % 16];
+    zlib.inflate(buf, (err, result) => err ? reject(err) : resolve(result.toString()));
+  }).then(str => {
+    str = String(str || '').replace(/\r/g, '').replace(/^.*\[id:\$\w+\]\n/, '');
+    let rlyric = '';
+    let tlyric = '';
+    const trans = str.match(/\[language:([\w=\\/+]+)\]/);
+    if (trans) {
+      str = str.replace(/\[language:[\w=\\/+]+\]\n/, '');
+      const json = JSON.parse(Buffer.from(trans[1], 'base64').toString());
+      for (const item of json.content || []) {
+        if (item.type === 0) rlyric = item.lyricContent;
+        else if (item.type === 1) tlyric = item.lyricContent;
+      }
+    }
+    let i = 0;
+    let lxlyric = str.replace(/\[((\d+),\d+)\].*/g, line => {
+      const m = line.match(/\[((\d+),\d+)\].*/);
+      let timeMs = parseInt(m[2], 10);
+      const ms = timeMs % 1000;
+      timeMs = Math.floor(timeMs / 1000);
+      const min = Math.floor(timeMs / 60).toString().padStart(2, '0');
+      const sec = Math.floor(timeMs % 60).toString().padStart(2, '0');
+      const time = `${min}:${sec}.${ms}`;
+      if (rlyric) rlyric[i] = `[${time}]${(rlyric[i] || []).join('')}`;
+      if (tlyric) tlyric[i] = `[${time}]${(tlyric[i] || []).join('')}`;
+      i++;
+      return line.replace(m[1], time);
+    });
+    rlyric = rlyric ? lxDecodeName(rlyric.join('\n')) : '';
+    tlyric = tlyric ? lxDecodeName(tlyric.join('\n')) : '';
+    lxlyric = lxDecodeName(lxlyric.replace(/<(\d+,\d+),\d+>/g, '<$1>'));
+    return {
+      lyric: lxlyric.replace(/<\d+,\d+>/g, ''),
+      tlyric,
+      rlyric,
+      lxlyric,
+    };
+  });
+}
+
+function lxIntervalToSeconds(interval) {
+  if (!interval) return 0;
+  if (typeof interval === 'number') return interval;
+  return String(interval).split(':').reverse().reduce((sum, part, index) => sum + (parseInt(part, 10) || 0) * Math.pow(60, index), 0);
+}
+
+async function lxGetKugouLyric(musicInfo) {
+  const name = musicInfo.name || '';
+  const hash = musicInfo.hash || musicInfo.FileHash || '';
+  const duration = musicInfo._interval || lxIntervalToSeconds(musicInfo.interval);
+  if (!name || !hash) throw new Error('Missing Kugou lyric keys');
+  const searchResult = await lxFetchJson(`http://lyrics.kugou.com/search?ver=1&man=yes&client=pc&keyword=${encodeURIComponent(name)}&hash=${encodeURIComponent(hash)}&timelength=${encodeURIComponent(duration)}&lrctxt=1`, {
+    headers: { 'KG-RC': '1', 'KG-THash': 'expand_search_manager.cpp:852736169:451', 'User-Agent': 'KuGou2012-9020-ExpandSearchManager' },
+  });
+  const candidate = searchResult && searchResult.candidates && searchResult.candidates[0];
+  if (!candidate) throw new Error('Get lyric failed');
+  const fmt = candidate.krctype == 1 && candidate.contenttype != 1 ? 'krc' : 'lrc';
+  const body = await lxFetchJson(`http://lyrics.kugou.com/download?ver=1&client=pc&id=${encodeURIComponent(candidate.id)}&accesskey=${encodeURIComponent(candidate.accesskey)}&fmt=${fmt}&charset=utf8`, {
+    headers: { 'KG-RC': '1', 'KG-THash': 'expand_search_manager.cpp:852736169:451', 'User-Agent': 'KuGou2012-9020-ExpandSearchManager' },
+  });
+  const info = body.fmt === 'krc'
+    ? await lxDecodeKugouKrc(body.content)
+    : { lyric: Buffer.from(body.content || '', 'base64').toString('utf8'), tlyric: '', rlyric: '', lxlyric: '' };
+  if (!info.lyric) throw new Error('Get lyric failed');
+  return Object.assign({ provider: 'lx', source: 'kg' }, info);
+}
+
+async function lxGetKugouPic(musicInfo) {
+  const songmid = String(musicInfo.songmid || musicInfo.mid || '');
+  const albumAudioId = songmid.length === 32 && musicInfo.audioId ? String(musicInfo.audioId).split('_')[0] : songmid;
+  const body = await lxFetchJson('http://media.store.kugou.com/v1/get_res_privilege', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'KG-RC': '1',
+      'KG-THash': 'expand_search_manager.cpp:852736169:451',
+      'User-Agent': 'KuGou2012-9020-ExpandSearchManager',
+    },
+    body: JSON.stringify({
+      appid: 1001,
+      area_code: '1',
+      behavior: 'play',
+      clientver: '9020',
+      need_hash_offset: 1,
+      relate: 1,
+      resource: [{
+        album_audio_id: albumAudioId,
+        album_id: musicInfo.albumId || musicInfo.albumID || '',
+        hash: musicInfo.hash || musicInfo.FileHash || '',
+        id: 0,
+        name: `${musicInfo.singer || musicInfo.artist || ''} - ${musicInfo.name || ''}.mp3`,
+        type: 'audio',
+      }],
+      token: '',
+      userid: 2626431536,
+      vip: 1,
+    }),
+  });
+  if (body.error_code !== 0) throw new Error('Pic get failed');
+  const info = body.data && body.data[0] && body.data[0].info;
+  const img = info && info.imgsize ? String(info.image || '').replace('{size}', info.imgsize[0]) : (info && info.image);
+  if (!img) throw new Error('Pic get failed');
+  return { provider: 'lx', source: 'kg', cover: img, pic: img };
+}
+
+const lxMiguMrcDelta = 2654435769n;
+const lxMiguMrcKey = [
+  27303562373562475n, 18014862372307051n, 22799692160172081n,
+  34058940340699235n, 30962724186095721n, 27303523720101991n,
+  27303523720101998n, 31244139033526382n, 28992395054481524n,
+];
+const lxLongMax = 9223372036854775807n;
+const lxLongMin = -9223372036854775808n;
+function lxToLong(value) {
+  const num = typeof value === 'string' ? BigInt('0x' + value) : BigInt(value);
+  if (num > lxLongMax) return lxToLong(num - (1n << 64n));
+  if (num < lxLongMin) return lxToLong(num + (1n << 64n));
+  return num;
+}
+function lxMiguLongToBytes(value) {
+  const result = Buffer.alloc(8);
+  let n = value;
+  for (let i = 0; i < 8; i++) {
+    result[i] = Number(n & 0xffn);
+    n >>= 8n;
+  }
+  return result;
+}
+function lxMiguDecryptMrc(data) {
+  data = String(data || '');
+  if (data.length < 32) return data;
+  const arr = [];
+  for (let i = 0; i < Math.floor(data.length / 16); i++) arr.push(lxToLong(data.substring(i * 16, i * 16 + 16)));
+  const len = BigInt(arr.length);
+  if (arr.length >= 1) {
+    let j2 = arr[0];
+    let j3 = lxToLong((6n + (52n / len)) * lxMiguMrcDelta);
+    while (j3 !== 0n) {
+      const j5 = lxToLong(3n & lxToLong(j3 >> 2n));
+      let j6 = len;
+      while (true) {
+        j6--;
+        if (j6 > 0n) {
+          const prev = arr[Number(j6 - 1n)];
+          const idx = Number(j6);
+          j2 = lxToLong(arr[idx] - (lxToLong(lxToLong(j2 ^ j3) + lxToLong(prev ^ lxMiguMrcKey[Number(lxToLong(3n & j6) ^ j5)])) ^ lxToLong(lxToLong(lxToLong(prev >> 5n) ^ lxToLong(j2 << 2n)) + lxToLong(lxToLong(j2 >> 3n) ^ lxToLong(prev << 4n)))));
+          arr[idx] = j2;
+        } else break;
+      }
+      const last = arr[Number(len - 1n)];
+      j2 = lxToLong(arr[0] - lxToLong(lxToLong(lxToLong(lxMiguMrcKey[Number(lxToLong(j6 & 3n) ^ j5)] ^ last) + lxToLong(j2 ^ j3)) ^ lxToLong(lxToLong(lxToLong(last >> 5n) ^ lxToLong(j2 << 2n)) + lxToLong(lxToLong(j2 >> 3n) ^ lxToLong(last << 4n)))));
+      arr[0] = j2;
+      j3 = lxToLong(j3 - lxMiguMrcDelta);
+    }
+  }
+  return arr.map(v => lxMiguLongToBytes(v).toString('utf16le')).join('');
+}
+
+function lxMsFormat(timeMs) {
+  if (!Number.isFinite(timeMs)) return '';
+  const ms = timeMs % 1000;
+  let secTotal = Math.floor(timeMs / 1000);
+  const min = Math.floor(secTotal / 60).toString().padStart(2, '0');
+  const sec = Math.floor(secTotal % 60).toString().padStart(2, '0');
+  return `[${min}:${sec}.${String(ms).padStart(3, '0')}]`;
+}
+
+function lxParseMiguMrc(str) {
+  str = String(str || '').replace(/\r/g, '');
+  const lxlrcLines = [];
+  const lrcLines = [];
+  str.split('\n').forEach(line => {
+    if (line.length < 6) return;
+    const m = /^\s*\[(\d+),\d+\]/.exec(line);
+    if (!m) return;
+    const start = parseInt(m[1], 10);
+    const time = lxMsFormat(start);
+    let words = line.replace(/^\s*\[(\d+),\d+\]/, '');
+    lrcLines.push(`${time}${words.replace(/(\(\d+,\d+\))/g, '')}`);
+    const times = words.match(/(\(\d+,\d+\))/g);
+    if (!times) return;
+    const parts = words.split(/\(\d+,\d+\)/);
+    const newWords = times.map((item, index) => {
+      const mm = /\((\d+),(\d+)\)/.exec(item);
+      return `<${parseInt(mm[1], 10) - start},${mm[2]}>${parts[index]}`;
+    }).join('');
+    lxlrcLines.push(`${time}${newWords}`);
+  });
+  return { lyric: lrcLines.join('\n'), lxlyric: lxlrcLines.join('\n') };
+}
+
+async function lxMiguGetText(url) {
+  return lxFetchText(url, {
+    headers: {
+      Referer: 'https://app.c.nf.migu.cn/',
+      'User-Agent': 'Mozilla/5.0 (Linux; Android 5.1.1; Nexus 6 Build/LYZ28E) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/59.0.3071.115 Mobile Safari/537.36',
+      channel: '0146921',
+    },
+  });
+}
+
+async function lxMiguGetMusicInfo(copyrightId) {
+  if (!copyrightId) throw new Error('Missing Migu copyright id');
+  const body = await lxFetchJson('https://c.musicapp.migu.cn/MIGUM2.0/v1.0/content/resourceinfo.do?resourceType=2', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+    body: lxFormBody({ resourceId: copyrightId }),
+  });
+  const item = body && body.resource && body.resource[0];
+  if (!item) throw new Error('Get music info failed');
+  return {
+    songmid: item.songId,
+    copyrightId: item.copyrightId,
+    lrcUrl: item.lrcUrl,
+    mrcUrl: item.mrcUrl,
+    trcUrl: item.trcUrl,
+  };
+}
+
+async function lxGetMiguLyric(musicInfo) {
+  const info = (musicInfo.mrcUrl || musicInfo.lrcUrl)
+    ? musicInfo
+    : await lxMiguGetMusicInfo(musicInfo.copyrightId || musicInfo.songmid);
+  let lrcInfo = null;
+  if (info.mrcUrl) lrcInfo = lxParseMiguMrc(lxMiguDecryptMrc(await lxMiguGetText(info.mrcUrl)));
+  else if (info.lrcUrl) lrcInfo = { lyric: await lxMiguGetText(info.lrcUrl), lxlyric: '' };
+  if (!lrcInfo) throw new Error('Get lyric failed');
+  const tlyric = info.trcUrl ? await lxMiguGetText(info.trcUrl).catch(() => '') : '';
+  return { provider: 'lx', source: 'mg', lyric: lrcInfo.lyric || '', tlyric, rlyric: '', lxlyric: lrcInfo.lxlyric || '' };
+}
+
+async function lxGetMiguPic(musicInfo) {
+  let songId = musicInfo.songmid || musicInfo.id;
+  if ((!songId || songId === musicInfo.copyrightId) && musicInfo.copyrightId) {
+    const info = await lxMiguGetMusicInfo(musicInfo.copyrightId);
+    songId = info.songmid || songId;
+  }
+  if (!songId) throw new Error('Missing Migu song id');
+  const body = await lxFetchJson(`http://music.migu.cn/v3/api/music/audioPlayer/getSongPic?songId=${encodeURIComponent(songId)}`, {
+    headers: { Referer: 'http://music.migu.cn/v3/music/player/audio?from=migu' },
+  });
+  if (body.returnCode !== '000000') throw new Error('Pic get failed');
+  let pic = body.largePic || body.mediumPic || body.smallPic || '';
+  if (pic && !/^https?:/i.test(pic)) pic = 'http:' + pic;
+  if (!pic) throw new Error('Pic get failed');
+  return { provider: 'lx', source: 'mg', cover: pic, pic };
+}
+
+const lxNeteaseEapiKey = Buffer.from('e82ckenh8dichen8');
+function lxNeteaseEapi(urlPath, object) {
+  const text = typeof object === 'object' ? JSON.stringify(object) : String(object);
+  const message = `nobody${urlPath}use${text}md5forencrypt`;
+  const digest = crypto.createHash('md5').update(message).digest('hex');
+  const data = `${urlPath}-36cd479b6b5-${text}-36cd479b6b5-${digest}`;
+  const cipher = crypto.createCipheriv('aes-128-ecb', lxNeteaseEapiKey, null);
+  cipher.setAutoPadding(true);
+  return { params: Buffer.concat([cipher.update(Buffer.from(data)), cipher.final()]).toString('hex').toUpperCase() };
+}
+
+const lxNeteaseParseTools = {
+  parseHeaderInfo(str) {
+    str = String(str || '').trim().replace(/\r/g, '');
+    if (!str) return null;
+    return str.split('\n').map(line => {
+      if (!/^{"/.test(line)) return line;
+      try {
+        const info = JSON.parse(line);
+        const timeTag = lxMsFormat(info.t);
+        return timeTag ? `${timeTag}${(info.c || []).map(t => t.tx).join('')}` : '';
+      } catch (e) { return ''; }
+    });
+  },
+  parseLyric(lines) {
+    const lxlrcLines = [];
+    const lrcLines = [];
+    (lines || []).forEach(lineRaw => {
+      let line = String(lineRaw || '').trim();
+      const m = /^\[(\d+),\d+\]/.exec(line);
+      if (!m) {
+        if (line.startsWith('[offset')) {
+          lxlrcLines.push(line);
+          lrcLines.push(line);
+        }
+        return;
+      }
+      const start = parseInt(m[1], 10);
+      const time = lxMsFormat(start);
+      let words = line.replace(/^\[(\d+),\d+\]/, '');
+      lrcLines.push(`${time}${words.replace(/(\(\d+,\d+,\d+\))/g, '')}`);
+      const times = words.match(/(\(\d+,\d+,\d+\))/g);
+      if (!times) return;
+      const parts = words.split(/\(\d+,\d+,\d+\)/);
+      parts.shift();
+      lxlrcLines.push(`${time}${times.map((item, index) => {
+        const mm = /\((\d+),(\d+),\d+\)/.exec(item);
+        return `<${Math.max(parseInt(mm[1], 10) - start, 0)},${mm[2]}>${parts[index]}`;
+      }).join('')}`);
+    });
+    return { lyric: lrcLines.join('\n'), lxlyric: lxlrcLines.join('\n') };
+  },
+  timeToMs(value) {
+    if (!value) return 0;
+    if (!String(value).includes('.')) value += '.0';
+    const arr = String(value).split(/:|\./);
+    while (arr.length < 3) arr.unshift('0');
+    return (parseInt(arr[0], 10) || 0) * 3600000 + (parseInt(arr[1], 10) || 0) * 1000 + (parseInt(arr[2], 10) || 0);
+  },
+  fixTimeTag(lrc, target) {
+    let lrcLines = String(lrc || '').split('\n');
+    const timeRxp = /^\[([\d:.]+)\]/;
+    const out = [];
+    String(target || '').split('\n').forEach(line => {
+      const m = timeRxp.exec(line);
+      if (!m || !line.replace(timeRxp, '').trim()) return;
+      const t1 = this.timeToMs(m[1]);
+      const stash = [];
+      while (lrcLines.length) {
+        const base = lrcLines.shift();
+        const bm = timeRxp.exec(base);
+        if (!bm) continue;
+        const t2 = this.timeToMs(bm[1]);
+        if (Math.abs(t1 - t2) < 100) {
+          const fixed = line.replace(timeRxp, bm[0]).trim();
+          if (fixed) out.push(fixed);
+          break;
+        }
+        stash.push(base);
+      }
+      lrcLines = stash.concat(lrcLines);
+    });
+    return out.join('\n');
+  },
+  parse(ylrc, ytlrc, yrlrc, lrc, tlrc, rlrc) {
+    const info = { lyric: '', tlyric: '', rlyric: '', lxlyric: '' };
+    if (ylrc) {
+      const lines = this.parseHeaderInfo(ylrc);
+      if (lines) {
+        const result = this.parseLyric(lines);
+        if (ytlrc) {
+          const tLines = this.parseHeaderInfo(ytlrc);
+          if (tLines) info.tlyric = this.fixTimeTag(result.lyric, tLines.join('\n'));
+        }
+        if (yrlrc) {
+          const rLines = this.parseHeaderInfo(yrlrc);
+          if (rLines) info.rlyric = this.fixTimeTag(result.lyric, rLines.join('\n'));
+        }
+        const headers = lines.filter(line => /^\[[\d:.]+\]/.test(line)).join('\n');
+        info.lyric = `${headers}\n${result.lyric}`;
+        info.lxlyric = result.lxlyric;
+        return info;
+      }
+    }
+    if (lrc) {
+      const lines = this.parseHeaderInfo(lrc);
+      if (lines) info.lyric = lines.join('\n');
+    }
+    if (tlrc) {
+      const lines = this.parseHeaderInfo(tlrc);
+      if (lines) info.tlyric = lines.join('\n');
+    }
+    if (rlrc) {
+      const lines = this.parseHeaderInfo(rlrc);
+      if (lines) info.rlyric = lines.join('\n');
+    }
+    return info;
+  },
+};
+
+function lxFixNeteaseTimeLabel(lrc, tlrc, rlyric) {
+  if (lrc) {
+    const fixedLrc = lrc.replace(/\[(\d{2}:\d{2}):(\d{2})]/g, '[$1.$2]');
+    const fixedTlrc = tlrc ? tlrc.replace(/\[(\d{2}:\d{2}):(\d{2})]/g, '[$1.$2]') : tlrc;
+    let fixedR = rlyric;
+    if (fixedR) fixedR = fixedR.replace(/\[(\d{2}:\d{2}):(\d{2,3})]/g, '[$1.$2]').replace(/\[(\d{2}:\d{2}\.\d{2})0]/g, '[$1]');
+    return { lrc: fixedLrc, tlrc: fixedTlrc, rlyric: fixedR };
+  }
+  return { lrc, tlrc, rlyric };
+}
+
+async function lxGetNeteaseLyric(musicInfo) {
+  const id = musicInfo.songmid || musicInfo.id || musicInfo.mid;
+  if (!id) throw new Error('Missing Netease song id');
+  const body = await lxFetchJson('https://interface3.music.163.com/eapi/song/lyric/v1', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.90 Safari/537.36',
+      origin: 'https://music.163.com',
+    },
+    body: lxFormBody(lxNeteaseEapi('/api/song/lyric/v1', { id, cp: false, tv: 0, lv: 0, rv: 0, kv: 0, yv: 0, ytv: 0, yrv: 0 })),
+  });
+  if (body.code !== 200 || !(body.lrc && body.lrc.lyric)) throw new Error('Get lyric failed');
+  const fixed = lxFixNeteaseTimeLabel(body.lrc.lyric, body.tlyric && body.tlyric.lyric, body.romalrc && body.romalrc.lyric);
+  const info = lxNeteaseParseTools.parse(body.yrc && body.yrc.lyric, body.ytlrc && body.ytlrc.lyric, body.yromalrc && body.yromalrc.lyric, fixed.lrc, fixed.tlrc, fixed.rlyric);
+  if (!info.lyric) throw new Error('Get lyric failed');
+  return Object.assign({ provider: 'lx', source: 'wy', yrc: body.yrc && body.yrc.lyric || '' }, info);
+}
+
+async function lxGetNeteasePic(musicInfo) {
+  const id = musicInfo.songmid || musicInfo.id || musicInfo.mid;
+  if (!id) throw new Error('Missing Netease song id');
+  const detail = await song_detail({ ids: String(id), timestamp: Date.now() });
+  const song = detail && detail.body && detail.body.songs && detail.body.songs[0];
+  const pic = song && song.al && song.al.picUrl;
+  if (!pic) throw new Error('Pic get failed');
+  return { provider: 'lx', source: 'wy', cover: pic, pic };
+}
+
+const lxQqParseTools = {
+  parseLyric(lrc) {
+    lrc = String(lrc || '').trim().replace(/\r/g, '');
+    if (!lrc) return { lyric: '', lxlyric: '' };
+    const lxlrcLines = [];
+    const lrcLines = [];
+    lrc.split('\n').forEach(lineRaw => {
+      const line = String(lineRaw || '').trim();
+      const m = /^\[(\d+),\d+\]/.exec(line);
+      if (!m) {
+        if (line.startsWith('[offset')) {
+          lxlrcLines.push(line);
+          lrcLines.push(line);
+        } else if (/^\[([\d:.]+)\]/.test(line)) {
+          lrcLines.push(line);
+        }
+        return;
+      }
+      const start = parseInt(m[1], 10);
+      const time = lxMsFormat(start);
+      const words = line.replace(/^\[(\d+),\d+\]/, '');
+      lrcLines.push(`${time}${words.replace(/(\(\d+,\d+\))/g, '')}`);
+      const times = words.match(/(\(\d+,\d+\))/g);
+      if (!times) return;
+      const parts = words.split(/\(\d+,\d+\)/);
+      lxlrcLines.push(`${time}${times.map((item, index) => {
+        const mm = /\((\d+),(\d+)\)/.exec(item);
+        return `<${Math.max(parseInt(mm[1], 10) - start, 0)},${mm[2]}>${parts[index]}`;
+      }).join('')}`);
+    });
+    return { lyric: lrcLines.join('\n'), lxlyric: lxlrcLines.join('\n') };
+  },
+  parseRlyric(lrc) {
+    return String(lrc || '').trim().replace(/\r/g, '').split('\n').map(line => {
+      const m = /^\[(\d+),\d+\]/.exec(line.trim());
+      if (!m) return '';
+      return `${lxMsFormat(parseInt(m[1], 10))}${line.replace(/^\[(\d+),\d+\]/, '').replace(/(\(\d+,\d+\))/g, '')}`;
+    }).filter(Boolean).join('\n');
+  },
+  removeTag(str) {
+    return String(str || '').replace(/^[\S\s]*?LyricContent="/, '').replace(/"\/>[\S\s]*?$/, '');
+  },
+  timeToMs(value) {
+    if (!value) return 0;
+    if (!String(value).includes('.')) value += '.0';
+    const arr = String(value).split(/:|\./);
+    while (arr.length < 3) arr.unshift('0');
+    return (parseInt(arr[0], 10) || 0) * 3600000 + (parseInt(arr[1], 10) || 0) * 1000 + (parseInt(arr[2], 10) || 0);
+  },
+  fixTimeTag(target, lrc) {
+    const targetLines = String(target || '').split('\n');
+    let lrcLines = String(lrc || '').split('\n');
+    const timeRxp = /^\[([\d:.]+)\]/;
+    const out = [];
+    targetLines.forEach(line => {
+      const m = timeRxp.exec(line);
+      if (!m || !line.replace(timeRxp, '').trim()) return;
+      const t1 = this.timeToMs(m[1]);
+      while (lrcLines.length) {
+        const base = lrcLines.shift();
+        const bm = timeRxp.exec(base);
+        if (!bm) continue;
+        if (Math.abs(t1 - this.timeToMs(bm[1])) < 100) {
+          out.push(line.replace(timeRxp, bm[0]));
+          break;
+        }
+      }
+    });
+    return out.join('\n');
+  },
+  parse(lrc, tlrc, rlrc) {
+    const info = { lyric: '', tlyric: '', rlyric: '', lxlyric: '' };
+    if (lrc) {
+      const parsed = this.parseLyric(this.removeTag(lrc));
+      info.lyric = parsed.lyric;
+      info.lxlyric = parsed.lxlyric;
+    }
+    if (rlrc) info.rlyric = this.fixTimeTag(this.parseRlyric(this.removeTag(rlrc)), info.lyric);
+    if (tlrc) info.tlyric = this.fixTimeTag(tlrc, info.lyric);
+    return info;
+  },
+};
+
+let lxQqDecodeAddon = null;
+function lxLoadQqDecodeAddon() {
+  if (lxQqDecodeAddon) return lxQqDecodeAddon;
+  const candidates = [];
+  if (process.platform === 'win32' && process.arch === 'x64') {
+    candidates.push(path.join(__dirname, 'build', `qrc_decode_electron-v${process.versions.modules}-win32-x64.node`));
+  }
+  candidates.push(path.join(__dirname, 'build', 'qrc_decode.node'));
+  for (const file of candidates) {
+    try {
+      if (fs.existsSync(file)) {
+        lxQqDecodeAddon = require(file);
+        return lxQqDecodeAddon;
+      }
+    } catch (e) {
+      console.warn('[LXQqDecode] native addon load failed:', e.message);
+    }
+  }
+  throw new Error('QQ_QRC_DECODE_NOT_AVAILABLE');
+}
+
+function lxInflateQqBuffer(buffer) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    const stream = zlib.createInflate()
+      .on('data', chunk => chunks.push(chunk))
+      .on('close', () => resolve(Buffer.concat(chunks).toString()))
+      .on('error', err => {
+        if (err && err.errno === zlib.constants.Z_BUF_ERROR) return;
+        reject(err);
+      });
+    stream.end(buffer);
+  });
+}
+
+async function lxDecodeQqHexLyric(hex) {
+  if (!hex) return '';
+  const addon = lxLoadQqDecodeAddon();
+  const buf = Buffer.from(String(hex), 'hex');
+  return lxInflateQqBuffer(addon.qrc_decode(buf, buf.length));
+}
+
+async function lxDecodeQqLyrics(lrc, tlrc, rlrc) {
+  const [lyric, tlyric, rlyric] = await Promise.all([
+    lxDecodeQqHexLyric(lrc),
+    lxDecodeQqHexLyric(tlrc),
+    lxDecodeQqHexLyric(rlrc),
+  ]);
+  return { lyric, tlyric, rlyric };
+}
+
+async function lxQqSongId(musicInfo) {
+  const direct = musicInfo.qqId || musicInfo.songId || musicInfo.songID || musicInfo.id;
+  if (direct && /^\d+$/.test(String(direct))) return Number(direct);
+  const mid = musicInfo.songmid || musicInfo.mid;
+  if (!mid) return 0;
+  const detail = await qqSongDetail(mid, { mid });
+  return normalizeQQSongId(detail && detail.qqId);
+}
+
+async function lxGetQqLyric(musicInfo) {
+  const songId = await lxQqSongId(musicInfo);
+  if (!songId) throw new Error('Missing QQ song id');
+  const body = await qqMusicRequest({
+    comm: { ct: '19', cv: '1859', uin: '0' },
+    req: {
+      method: 'GetPlayLyricInfo',
+      module: 'music.musichallSong.PlayLyricInfo',
+      param: { format: 'json', crypt: 1, ct: 19, cv: 1873, interval: 0, lrc_t: 0, qrc: 1, qrc_t: 0, roma: 1, roma_t: 0, songID: songId, trans: 1, trans_t: 0, type: -1 },
+    },
+  }, { cookie: false });
+  if (body.code !== 0 || !body.req || body.req.code !== 0) throw new Error('Get lyric failed');
+  const data = body.req.data || {};
+  const decoded = await lxDecodeQqLyrics(data.lyric, data.trans, data.roma);
+  const info = lxQqParseTools.parse(decoded.lyric, decoded.tlyric, decoded.rlyric);
+  if (!info.lyric) throw new Error('Get lyric failed');
+  return Object.assign({ provider: 'lx', source: 'tx' }, info);
+}
+
+async function lxGetQqPic(musicInfo) {
+  const albumId = musicInfo.albumId || musicInfo.albumMid || musicInfo.albummid || '';
+  let pic = albumId && albumId !== '空' ? `https://y.gtimg.cn/music/photo_new/T002R500x500M000${albumId}.jpg` : '';
+  if (!pic && Array.isArray(musicInfo.singer) && musicInfo.singer[0] && musicInfo.singer[0].mid) pic = `https://y.gtimg.cn/music/photo_new/T001R500x500M000${musicInfo.singer[0].mid}.jpg`;
+  if (!pic && Array.isArray(musicInfo.artists) && musicInfo.artists[0] && musicInfo.artists[0].mid) pic = `https://y.gtimg.cn/music/photo_new/T001R500x500M000${musicInfo.artists[0].mid}.jpg`;
+  if (!pic) throw new Error('Pic get failed');
+  return { provider: 'lx', source: 'tx', cover: pic, pic };
+}
+
+async function callLXUserApiIfConfigured(source, action, info) {
+  const api = loadLXUserApi();
+  if (!api.ok) return null;
+  const handler = api.events[LX_EVENT_NAMES.request];
+  if (typeof handler !== 'function') return null;
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('LX_SOURCE_TIMEOUT')), 15000));
+  return Promise.race([
+    Promise.resolve(handler({ source, action, info })),
+    timeout,
+  ]);
+}
+
+async function handleLXSongUrl(source, musicInfo, qualityPreference) {
+  source = String(source || '').trim().toLowerCase();
+  if (!LX_SOURCE_NAMES[source]) {
+    return { provider: 'lx', url: '', playable: false, error: 'LX_SOURCE_INVALID', message: '不支持的落雪源: ' + source };
+  }
+  const sourceInfo = lxSourceInfoFor(source);
+  const requestedQuality = normalizeLxRequestedQuality(qualityPreference);
+  const quality = lxQualityToSourceType(qualityPreference, sourceInfo && sourceInfo.qualitys);
+  try {
+    const result = await callLXUserApi(source, 'musicUrl', {
+      type: quality,
+      musicInfo: normalizeLXMusicInfo(source, musicInfo),
+    });
+    const url = extractLXMusicUrl(result);
+    if (!url) {
+      const restriction = playbackRestriction('lx', 'url_unavailable', '落雪自定义源没有返回播放地址', 'switch_source');
+      return { provider: 'lx', url: '', playable: false, reason: restriction.category, message: restriction.message, restriction, level: requestedQuality, quality: requestedQuality, requestedQuality, lxSourceQuality: quality };
+    }
+    return {
+      provider: 'lx',
+      url,
+      playable: true,
+      trial: false,
+      level: requestedQuality,
+      quality: requestedQuality,
+      requestedQuality,
+      lxSourceQuality: quality,
+      lxSource: source,
+    };
+  } catch (e) {
+    const restriction = playbackRestriction('lx', 'url_unavailable', e.message || '落雪自定义源取播放地址失败', 'switch_source');
+    return { provider: 'lx', url: '', playable: false, error: e.message, reason: restriction.category, message: restriction.message, restriction, level: requestedQuality, quality: requestedQuality, requestedQuality, lxSourceQuality: quality, lxSource: source };
+  }
+}
+
+async function handleLXLyric(source, musicInfo) {
+  source = String(source || '').trim().toLowerCase();
+  const normalized = normalizeLXMusicInfo(source, musicInfo);
+  try {
+    if (source === 'kw') return await lxGetKuwoLyric(normalized);
+    if (source === 'kg') return await lxGetKugouLyric(normalized);
+    if (source === 'mg') return await lxGetMiguLyric(normalized);
+    if (source === 'tx') return await lxGetQqLyric(normalized);
+    if (source === 'wy') return await lxGetNeteaseLyric(normalized);
+  } catch (e) {
+    warnLXOptionalUserApi('[LXLyricOfficial]', source, e);
+  }
+  return { provider: 'lx', source, lyric: '', tlyric: '', rlyric: '', yrc: '', lxlyric: '' };
+}
+
+async function handleLXPic(source, musicInfo) {
+  source = String(source || '').trim().toLowerCase();
+  const normalized = normalizeLXMusicInfo(source, musicInfo);
+  try {
+    if (source === 'kw') return await lxGetKuwoPic(normalized);
+    if (source === 'kg') return await lxGetKugouPic(normalized);
+    if (source === 'mg') return await lxGetMiguPic(normalized);
+    if (source === 'tx') return await lxGetQqPic(normalized);
+    if (source === 'wy') return await lxGetNeteasePic(normalized);
+  } catch (e) {
+    warnLXOptionalUserApi('[LXPicOfficial]', source, e);
+  }
+  return { provider: 'lx', source, cover: '', pic: '' };
 }
 
 function clampNumber(value, min, max, fallback) {
@@ -2500,6 +4790,28 @@ function mapQQArtists(raw) {
     .filter(a => a.name);
 }
 
+function qqQualityTypesFromFile(file) {
+  file = file || {};
+  const types = [];
+  const _types = {};
+  function add(type, size) {
+    if (!size || _types[type]) return;
+    const meta = { size: lxSizeFormat(size) };
+    types.push(Object.assign({ type }, meta));
+    _types[type] = meta;
+  }
+  add('128k', file.size_128mp3);
+  add('320k', file.size_320mp3);
+  add('flac', file.size_flac);
+  add('hires', file.size_hires);
+  if (Array.isArray(file.size_new)) {
+    add('master', file.size_new[0]);
+    add('atmos', file.size_new[1]);
+    add('atmos_plus', file.size_new[2]);
+  }
+  return { types, _types };
+}
+
 function mapQQSmartSong(item) {
   item = item || {};
   const mid = item.mid || item.songmid || item.id || '';
@@ -2529,6 +4841,7 @@ function mapQQTrack(track, fallback) {
   const artists = mapQQArtists(track.singer || []);
   const mid = track.mid || fallback.mid || fallback.songmid || '';
   const albumMid = album.mid || album.pmid || '';
+  const qualityInfo = qqQualityTypesFromFile(track.file || {});
   return {
     provider: 'qq',
     source: 'qq',
@@ -2547,6 +4860,8 @@ function mapQQTrack(track, fallback) {
     albumMid,
     cover: qqAlbumCover(albumMid, 300) || fallback.cover || '',
     duration: (Number(track.interval) || 0) * 1000,
+    types: qualityInfo.types,
+    _types: qualityInfo._types,
     fee: track.pay && Number(track.pay.pay_play) ? 1 : 0,
     playable: false,
   };
@@ -3436,6 +5751,63 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (pn === '/api/lx/search') {
+    try {
+      const kw = url.searchParams.get('keywords') || '';
+      const limit = Math.max(6, Math.min(36, parseInt(url.searchParams.get('limit') || '18', 10) || 18));
+      const sources = url.searchParams.get('sources') || '';
+      const timeoutMs = Math.max(700, Math.min(8000, parseInt(url.searchParams.get('timeout') || url.searchParams.get('timeoutMs') || String(LX_SEARCH_SOURCE_TIMEOUT_MS), 10) || LX_SEARCH_SOURCE_TIMEOUT_MS));
+      const songs = await handleLXSearch(kw, limit, sources, { timeoutMs });
+      sendJSON(res, { provider: 'lx', songs, partial: !!songs._lxSearchMeta?.partial, meta: songs._lxSearchMeta || null });
+    } catch (err) {
+      console.error('[LXSearch]', err);
+      sendJSON(res, { provider: 'lx', error: err.message, songs: [] }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/lx/source/status') {
+    const api = loadLXUserApi();
+    sendJSON(res, {
+      provider: 'lx',
+      configured: !!api.ok,
+      file: api.file || '',
+      error: api.ok ? '' : (api.error || ''),
+      message: api.ok ? '' : (api.message || ''),
+      sources: api.sources || {},
+    });
+    return;
+  }
+
+  if (pn === '/api/lx/source/import') {
+    if (req.method !== 'POST') { sendJSON(res, { provider: 'lx', ok: false, error: 'METHOD_NOT_ALLOWED' }, 405); return; }
+    try {
+      const body = await readRequestBody(req);
+      const script = body.script || body.content || body.text || '';
+      const target = saveLXSourceScript(script);
+      const api = loadLXUserApi();
+      sendJSON(res, {
+        provider: 'lx',
+        ok: !!api.ok,
+        configured: !!api.ok,
+        file: target,
+        sources: api.sources || {},
+        error: api.ok ? '' : (api.error || 'LX_SOURCE_INIT_FAILED'),
+      }, api.ok ? 200 : 400);
+    } catch (err) {
+      console.error('[LXSourceImport]', err);
+      sendJSON(res, { provider: 'lx', ok: false, configured: false, error: err.message || 'LX_SOURCE_IMPORT_FAILED' }, 400);
+    }
+    return;
+  }
+
+  if (pn === '/api/lx/source/clear') {
+    if (req.method !== 'POST' && req.method !== 'DELETE') { sendJSON(res, { provider: 'lx', ok: false, error: 'METHOD_NOT_ALLOWED' }, 405); return; }
+    const removed = clearLXSourceScript();
+    sendJSON(res, { provider: 'lx', ok: true, configured: false, removed });
+    return;
+  }
+
   if (pn === '/api/qq/song/url') {
     try {
       const mid = url.searchParams.get('mid') || url.searchParams.get('id') || '';
@@ -3446,6 +5818,70 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       console.error('[QQSongUrl]', err);
       sendJSON(res, { provider: 'qq', url: '', playable: false, error: err.message }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/lx/song/url') {
+    try {
+      const source = url.searchParams.get('source') || url.searchParams.get('lxSource') || '';
+      const quality = url.searchParams.get('quality') || '';
+      let info = {};
+      const rawInfo = url.searchParams.get('info') || '';
+      if (rawInfo) {
+        try { info = JSON.parse(rawInfo); } catch (e) { info = {}; }
+      }
+      ['id', 'songmid', 'mid', 'hash', 'mediaMid', 'name', 'artist', 'album', 'copyrightId'].forEach(key => {
+        const value = url.searchParams.get(key);
+        if (value !== null && value !== '') info[key] = value;
+      });
+      const data = await handleLXSongUrl(source, info, quality);
+      sendJSON(res, data);
+    } catch (err) {
+      console.error('[LXSongUrl]', err);
+      sendJSON(res, { provider: 'lx', url: '', playable: false, error: err.message }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/lx/lyric') {
+    try {
+      const source = url.searchParams.get('source') || url.searchParams.get('lxSource') || '';
+      let info = {};
+      const rawInfo = url.searchParams.get('info') || '';
+      if (rawInfo) {
+        try { info = JSON.parse(rawInfo); } catch (e) { info = {}; }
+      }
+      ['id', 'songmid', 'mid', 'hash', 'name', 'artist', 'album', 'copyrightId'].forEach(key => {
+        const value = url.searchParams.get(key);
+        if (value !== null && value !== '') info[key] = value;
+      });
+      const data = await handleLXLyric(source, info);
+      sendJSON(res, data);
+    } catch (err) {
+      console.error('[LXLyric]', err);
+      sendJSON(res, { provider: 'lx', lyric: '', error: err.message }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/lx/pic' || pn === '/api/lx/cover') {
+    try {
+      const source = url.searchParams.get('source') || url.searchParams.get('lxSource') || '';
+      let info = {};
+      const rawInfo = url.searchParams.get('info') || '';
+      if (rawInfo) {
+        try { info = JSON.parse(rawInfo); } catch (e) { info = {}; }
+      }
+      ['id', 'songmid', 'mid', 'hash', 'name', 'artist', 'album', 'copyrightId', 'img', 'cover', 'pic', 'Image', 'AlbumImage'].forEach(key => {
+        const value = url.searchParams.get(key);
+        if (value !== null && value !== '') info[key] = value;
+      });
+      const data = await handleLXPic(source, info);
+      sendJSON(res, data);
+    } catch (err) {
+      console.error('[LXPic]', err);
+      sendJSON(res, { provider: 'lx', cover: '', pic: '', error: err.message }, 500);
     }
     return;
   }
@@ -4159,11 +6595,38 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (pn === '/api/audio/cache/status') {
+    sendJSON(res, audioCacheStatus());
+    return;
+  }
+
+  if (pn === '/api/audio/cache/clear') {
+    if (req.method !== 'POST' && req.method !== 'DELETE') { sendJSON(res, { ok: false, error: 'METHOD_NOT_ALLOWED' }, 405); return; }
+    sendJSON(res, clearAudioCache());
+    return;
+  }
+
   // ---------- 音频代理 (支持 Range) ----------
   if (pn === '/api/audio') {
     try {
       const audioUrl = url.searchParams.get('url');
       if (!audioUrl) { res.writeHead(400); res.end('Missing url'); return; }
+      const cacheMeta = {
+        provider: url.searchParams.get('provider') || '',
+        sourceKey: url.searchParams.get('sourceKey') || url.searchParams.get('sourceId') || '',
+        songId: url.searchParams.get('songId') || url.searchParams.get('musicId') || url.searchParams.get('id') || '',
+        qualityKey: url.searchParams.get('qualityKey') || '',
+        title: url.searchParams.get('title') || url.searchParams.get('name') || '',
+        artist: url.searchParams.get('artist') || url.searchParams.get('singer') || '',
+        album: url.searchParams.get('album') || '',
+        source: url.searchParams.get('source') || url.searchParams.get('provider') || '',
+        quality: url.searchParams.get('quality') || url.searchParams.get('level') || '',
+      };
+      const stableCacheMeta = isAudioCacheStableMeta(cacheMeta);
+      if (stableCacheMeta) {
+        const cached = findAudioCacheEntry(audioUrl, cacheMeta);
+        if (cached && serveAudioCacheEntry(req, res, cached)) return;
+      }
       const range = req.headers.range || '';
       const hdr = audioProxyHeadersFor(audioUrl, range);
       const up = await fetch(audioUrl, { headers: hdr });
@@ -4171,10 +6634,12 @@ const server = http.createServer(async (req, res) => {
         'Content-Type': audioContentTypeForUrl(audioUrl, up.headers.get('content-type')),
         'Access-Control-Allow-Origin': '*',
         'Accept-Ranges': 'bytes',
+        'X-Mineradio-Audio-Cache': 'miss',
       };
       const cl = up.headers.get('content-length'); if (cl) out['Content-Length'] = cl;
       const cr = up.headers.get('content-range');  if (cr) out['Content-Range']  = cr;
       res.writeHead(up.status, out);
+      if (up.ok && stableCacheMeta) setTimeout(() => cacheAudioInBackground(audioUrl, up.headers.get('content-type'), cacheMeta), 0);
       const reader = up.body.getReader();
       while (true) { const c = await reader.read(); if (c.done) break; res.write(c.value); }
       res.end();
@@ -4195,8 +6660,8 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log('======================================================');
-  console.log(' 粒子音乐可视化 v2  →  http://localhost:' + PORT);
-  console.log(' 登录态: ' + (userCookie ? '已登录(cookie已加载)' : '未登录'));
+  console.log(' Mineradio visual player v2 -> http://localhost:' + PORT);
+  console.log(' Login: ' + (userCookie ? 'loaded from cookie' : 'not logged in'));
   console.log('======================================================');
 });
 

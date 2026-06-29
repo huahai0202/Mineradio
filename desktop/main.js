@@ -29,8 +29,9 @@ const WINDOWED_SCALE = 3 / 4;
 const WINDOWED_MARGIN = 32;
 const MIN_WINDOWED_WIDTH = 960;
 const MIN_WINDOWED_HEIGHT = 540;
-const APP_NAME = 'Mineradio';
-const APP_USER_MODEL_ID = 'com.mineradio.desktop';
+const APP_PACKAGE = require('../package.json');
+const APP_NAME = APP_PACKAGE.productName || 'Mineradio LX';
+const APP_USER_MODEL_ID = (APP_PACKAGE.build && APP_PACKAGE.build.appId) || 'com.huahai0202.mineradio.lx';
 const APP_ICON_ICO = path.join(__dirname, '..', 'build', 'icon.ico');
 const NETEASE_LOGIN_PARTITION = 'persist:mineradio-netease-login';
 const NETEASE_LOGIN_URL = 'https://music.163.com/#/login';
@@ -121,6 +122,21 @@ function waitForServer(server) {
     server.once('listening', resolve);
     server.once('error', reject);
   });
+}
+
+async function loadMainWindowUrl(win, targetUrl) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    try {
+      await win.loadURL(targetUrl);
+      return;
+    } catch (e) {
+      lastError = e;
+      console.warn(`Main window load failed (${attempt}/4):`, e.message || e);
+      await new Promise(resolve => setTimeout(resolve, 450 * attempt));
+    }
+  }
+  throw lastError;
 }
 
 function sendWindowState(win) {
@@ -272,6 +288,74 @@ function getUpdateDownloadDir() {
   return path.join(app.getPath('userData'), 'updates');
 }
 
+function getBeatmapCacheDir() {
+  return process.env.MINERADIO_BEAT_CACHE_DIR || 'D:\\MineradioCache\\beatmaps';
+}
+
+function getAudioCacheDir() {
+  return process.env.MINERADIO_AUDIO_CACHE_DIR || 'D:\\MineradioCache\\audio';
+}
+
+function getAppCacheInfo() {
+  const userData = app.getPath('userData');
+  return {
+    ok: true,
+    userData,
+    cacheRoot: userData,
+    audioCache: getAudioCacheDir(),
+    updateCache: getUpdateDownloadDir(),
+    beatmapCache: getBeatmapCacheDir(),
+    chromiumCaches: [
+      'Cache',
+      'Code Cache',
+      'GPUCache',
+      'DawnCache',
+      'ShaderCache',
+      'blob_storage',
+    ].map(name => path.join(userData, name)),
+  };
+}
+
+function safeRemoveContents(target, allowedRoots) {
+  const resolved = path.resolve(target || '');
+  const allowed = (allowedRoots || []).map(root => path.resolve(root || '')).filter(Boolean);
+  if (!resolved || !allowed.some(root => resolved === root || resolved.startsWith(root + path.sep))) {
+    return { target: resolved, removed: 0, skipped: true, reason: 'OUT_OF_SCOPE' };
+  }
+  if (!fs.existsSync(resolved)) return { target: resolved, removed: 0, missing: true };
+  let removed = 0;
+  for (const name of fs.readdirSync(resolved)) {
+    const child = path.join(resolved, name);
+    try {
+      fs.rmSync(child, { recursive: true, force: true });
+      removed++;
+    } catch (e) {
+      console.warn('Cache cleanup skipped:', child, e.message);
+    }
+  }
+  return { target: resolved, removed };
+}
+
+async function clearMineradioAppCache() {
+  const info = getAppCacheInfo();
+  const userData = path.resolve(info.userData);
+  const beatmapRoot = path.resolve(path.dirname(info.beatmapCache));
+  const audioRoot = path.resolve(path.dirname(info.audioCache));
+  const results = [];
+  try {
+    await session.defaultSession.clearCache();
+  } catch (e) {
+    results.push({ target: 'electron-session-cache', error: e.message });
+  }
+  for (const target of info.chromiumCaches) {
+    results.push(safeRemoveContents(target, [userData]));
+  }
+  results.push(safeRemoveContents(info.audioCache, [audioRoot, 'D:\\MineradioCache']));
+  results.push(safeRemoveContents(info.updateCache, [userData]));
+  results.push(safeRemoveContents(info.beatmapCache, [beatmapRoot, 'D:\\MineradioCache']));
+  return { ok: true, info, results };
+}
+
 function shouldEnsureDesktopShortcut() {
   if (process.platform !== 'win32') return false;
   if (process.env.MINERADIO_NO_DESKTOP_SHORTCUT === '1') return false;
@@ -287,7 +371,7 @@ function ensureDesktopShortcut() {
       target,
       cwd: path.dirname(target),
       args: '',
-      description: 'Mineradio desktop music player',
+      description: APP_NAME + ' desktop music player',
       icon: fs.existsSync(APP_ICON_ICO) ? APP_ICON_ICO : target,
       iconIndex: 0,
       appUserModelId: APP_USER_MODEL_ID,
@@ -929,7 +1013,7 @@ function createDesktopLyricsWindow(payload = {}) {
     focusable: false,
     skipTaskbar: true,
     show: false,
-    title: 'Mineradio Desktop Lyrics',
+    title: APP_NAME + ' Desktop Lyrics',
     webPreferences: {
       preload: path.join(__dirname, 'overlay-preload.js'),
       contextIsolation: true,
@@ -1058,7 +1142,7 @@ function createWallpaperWindow(payload = {}) {
     focusable: false,
     skipTaskbar: true,
     show: false,
-    title: 'Mineradio Wallpaper',
+    title: APP_NAME + ' Wallpaper',
     webPreferences: {
       preload: path.join(__dirname, 'overlay-preload.js'),
       contextIsolation: true,
@@ -1159,6 +1243,18 @@ ipcMain.handle('mineradio-import-json-file', async (event) => {
     return { ok: false, error: e.message || 'IMPORT_FAILED' };
   }
 });
+
+ipcMain.handle('mineradio-cache-info', async () => getAppCacheInfo());
+
+ipcMain.handle('mineradio-open-cache-directory', async () => {
+  const info = getAppCacheInfo();
+  const target = path.dirname(info.audioCache) || info.userData;
+  fs.mkdirSync(target, { recursive: true });
+  const error = await shell.openPath(target);
+  return { ok: !error, path: target, error: error || '' };
+});
+
+ipcMain.handle('mineradio-clear-app-cache', async () => clearMineradioAppCache());
 
 ipcMain.handle('netease-music-open-login', async (event) => {
   return openNeteaseMusicLoginWindow(getSenderWindow(event));
@@ -1327,7 +1423,9 @@ async function createWindow() {
   process.env.PORT = String(port);
   process.env.COOKIE_FILE = path.join(app.getPath('userData'), '.cookie');
   process.env.QQ_COOKIE_FILE = path.join(app.getPath('userData'), '.qq-cookie');
+  process.env.MINERADIO_LX_SOURCE_FILE = path.join(app.getPath('userData'), 'lx-source.js');
   process.env.MINERADIO_UPDATE_DIR = getUpdateDownloadDir();
+  process.env.MINERADIO_AUDIO_CACHE_DIR = getAudioCacheDir();
   try {
     const legacyQQCookie = path.join(__dirname, '..', '.qq-cookie');
     if (fs.existsSync(legacyQQCookie)) {
@@ -1423,7 +1521,7 @@ async function createWindow() {
     setTimeout(() => applyWindowedBounds(mainWindow), 50);
   });
 
-  await mainWindow.loadURL(`http://127.0.0.1:${port}`);
+  await loadMainWindowUrl(mainWindow, `http://127.0.0.1:${port}`);
 }
 
 app.setName(APP_NAME);

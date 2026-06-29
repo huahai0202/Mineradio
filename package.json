@@ -1,9 +1,9 @@
 {
-  "name": "mineradio",
-  "productName": "Mineradio",
-  "version": "1.1.1",
-  "description": "沉浸式音乐播放器，融合天气电台、歌词舞台、粒子视觉和 3D 歌单架。",
-  "author": "Mineradio",
+  "name": "mineradio-lx",
+  "productName": "Mineradio LX",
+  "version": "1.1.2",
+  "description": "基于 Mineradio 二次开发的沉浸式音乐播放器，主打适配落雪音乐音源。",
+  "author": "huahai0202",
   "main": "desktop/main.js",
   "private": true,
   "scripts": {
@@ -12,8 +12,8 @@
     "build:win:dir": "electron-builder --win dir"
   },
   "build": {
-    "appId": "com.mineradio.desktop",
-    "productName": "Mineradio",
+    "appId": "com.huahai0202.mineradio.lx",
+    "productName": "Mineradio LX",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -34,7 +34,7 @@
     ],
     "asar": false,
     "win": {
-      "executableName": "Mineradio",
+      "executableName": "Mineradio-LX",
       "icon": "build/icon.ico",
       "signAndEditExecutable": false,
       "target": [
@@ -52,19 +52,19 @@
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Mineradio",
+      "shortcutName": "Mineradio LX",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerSidebar": "build/installerSidebar.bmp",
       "uninstallerSidebar": "build/installerSidebar.bmp",
       "installerHeader": "build/installerHeader.bmp",
       "include": "build/installer.nsh",
-      "artifactName": "Mineradio-${version}-Setup.${ext}"
+      "artifactName": "Mineradio-LX-${version}-Setup.${ext}"
     },
     "publish": [
       {
         "provider": "github",
-        "owner": "XxHuberrr",
+        "owner": "huahai0202",
         "repo": "Mineradio"
       }
     ]
@@ -72,7 +72,7 @@
   "mineradio": {
     "update": {
       "provider": "github",
-      "owner": "XxHuberrr",
+      "owner": "huahai0202",
       "repo": "Mineradio",
       "preview": true,
       "preferMirrors": true,
@@ -85,6 +85,7 @@
   },
   "dependencies": {
     "gsap": "^3.15.0",
+    "iconv-lite": "^0.4.24",
     "mpg123-decoder": "^1.0.3",
     "NeteaseCloudMusicApi": "^4.32.0"
   },

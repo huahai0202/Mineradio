@@ -40,10 +40,21 @@ function resolveRcedit(projectDir) {
   return hit;
 }
 
+function readPackageInfo(projectDir) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(projectDir, 'package.json'), 'utf8'));
+  } catch (e) {
+    return {};
+  }
+}
+
 module.exports = async function afterPack(context) {
   if (context.electronPlatformName !== 'win32') return;
 
-  const appName = context.packager.appInfo.productFilename || 'Mineradio';
+  const packageInfo = readPackageInfo(context.packager.projectDir);
+  const productName = context.packager.appInfo.productName || packageInfo.productName || 'Mineradio';
+  const companyName = packageInfo.author || productName;
+  const appName = context.packager.appInfo.productFilename || productName;
   const exePath = path.join(context.appOutDir, `${appName}.exe`);
   const iconPath = path.join(context.packager.info.buildResourcesDir, 'icon.ico');
   const rceditPath = resolveRcedit(context.packager.projectDir);
@@ -56,9 +67,9 @@ module.exports = async function afterPack(context) {
   execFileSync(rceditPath, [
     exePath,
     '--set-icon', iconPath,
-    '--set-version-string', 'FileDescription', 'Mineradio',
-    '--set-version-string', 'ProductName', 'Mineradio',
-    '--set-version-string', 'CompanyName', 'Mineradio',
+    '--set-version-string', 'FileDescription', productName,
+    '--set-version-string', 'ProductName', productName,
+    '--set-version-string', 'CompanyName', companyName,
     '--set-version-string', 'OriginalFilename', `${appName}.exe`,
     '--set-file-version', version,
     '--set-product-version', version
