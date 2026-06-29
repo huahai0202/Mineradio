@@ -2,7 +2,7 @@
 
 ## v1.1.2
 
-- Fork release: rename this build to `Mineradio LX` and switch package/update metadata to `huahai0202/Mineradio`.
+- Fork release: rename this build to `Mineradio LX` and switch package/update metadata to `huahai0202/Mineradio-LX`.
 - Document that this repository is based on the official Mineradio project and focuses on LX Music source adaptation.
 - Add LX source support notes, quality handling notes, cache behavior notes, local playlist behavior, and third-party platform disclaimers to README.
 - Installer artifact is now named `Mineradio-LX-${version}-Setup.exe`.

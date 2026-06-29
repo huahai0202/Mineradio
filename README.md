@@ -12,7 +12,7 @@ Mineradio LX 是基于 [XxHuberrr/Mineradio](https://github.com/XxHuberrr/Minera
 
 打包产物：`Mineradio-LX-1.1.2-Setup.exe`
 
-Release 仓库：[huahai0202/Mineradio](https://github.com/huahai0202/Mineradio/releases)
+Release 仓库：[huahai0202/Mineradio-LX](https://github.com/huahai0202/Mineradio-LX/releases)
 
 ## 和官方版的主要不同
 
@@ -68,7 +68,7 @@ npm run build:win
 
 ## 更新机制
 
-Mineradio LX 会请求 [huahai0202/Mineradio](https://github.com/huahai0202/Mineradio) 的 GitHub Releases latest 检测新版本。远端版本高于本地版本时，应用内更新入口会展示 Release 内容、下载安装包到本机用户数据目录，并通过系统打开安装包。
+Mineradio LX 会请求 [huahai0202/Mineradio-LX](https://github.com/huahai0202/Mineradio-LX) 的 GitHub Releases latest 检测新版本。远端版本高于本地版本时，应用内更新入口会展示 Release 内容、下载安装包到本机用户数据目录，并通过系统打开安装包。
 
 本地验证更新链路时，可以通过 `MINERADIO_UPDATE_MANIFEST` 指向一个本地 manifest JSON 或 HTTP 地址来模拟线上 Release。
 
