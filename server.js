@@ -33,6 +33,7 @@ const {
   personalized,
   recommend_resource,
   recommend_songs,
+  toplist_detail,
   dj_detail,
   dj_program,
   dj_hot,
@@ -2086,6 +2087,94 @@ function mapDiscoverPlaylist(pl, tag) {
     creator: creator.nickname || creator.name || '',
     tag: tag || pl.alg || '',
   };
+}
+
+const NETEASE_RANKING_FALLBACK = [
+  { id: '3778678', name: '云音乐热歌榜', cover: '', updateFrequency: '刚刚更新', description: '网易云音乐热度最高的中文与流行歌曲' },
+  { id: '19723756', name: '云音乐飙升榜', cover: '', updateFrequency: '每天更新', description: '近期热度上升最快的新歌与热门单曲' },
+  { id: '3779629', name: '云音乐新歌榜', cover: '', updateFrequency: '每天更新', description: '全站最新发行歌曲趋势' },
+  { id: '2884035', name: '网易原创歌曲榜', cover: '', updateFrequency: '每周更新', description: '网易云音乐原创作品热度榜' },
+];
+
+function mapNeteaseRanking(item, index) {
+  item = item || {};
+  const id = item.id || item.playlistId || item.resourceId || '';
+  const tracks = Array.isArray(item.tracks) ? item.tracks : [];
+  return {
+    provider: 'netease',
+    source: 'netease',
+    type: 'ranking',
+    id: String(id || ''),
+    name: item.name || item.title || ('网易云榜单 ' + (index + 1)),
+    cover: item.coverImgUrl || item.picUrl || item.coverUrl || '',
+    description: item.description || item.updateFrequency || '',
+    updateFrequency: item.updateFrequency || '',
+    trackCount: item.trackCount || item.songCount || tracks.length || 0,
+    playCount: item.playCount || 0,
+    tracks: tracks.slice(0, 5).map(t => ({
+      first: t && (t.first || t.name || ''),
+      second: t && (t.second || t.artist || ''),
+    })).filter(t => t.first),
+  };
+}
+
+async function handleNeteaseRankings() {
+  let rawList = [];
+  try {
+    if (typeof toplist_detail === 'function') {
+      const result = await toplist_detail({ cookie: userCookie, timestamp: Date.now() });
+      const body = result && result.body || {};
+      rawList = body.list || body.data && body.data.list || body.data || [];
+    }
+  } catch (err) {
+    console.warn('[NeteaseRankings] toplist_detail failed:', err.message);
+  }
+  if (!Array.isArray(rawList) || !rawList.length) rawList = NETEASE_RANKING_FALLBACK;
+  const rankings = rawList
+    .map(mapNeteaseRanking)
+    .filter(item => item.id && item.name)
+    .slice(0, 40);
+  return { provider: 'netease', rankings, updatedAt: Date.now() };
+}
+
+async function handleNeteaseRankingTracks(id, limit) {
+  id = String(id || NETEASE_RANKING_FALLBACK[0].id);
+  limit = Math.max(1, Math.min(200, Number(limit) || 60));
+  let playlistMeta = { id, name: '', cover: '', trackCount: 0, type: 'ranking', provider: 'netease', source: 'netease' };
+  let rawTracks = [];
+
+  if (typeof playlist_track_all === 'function') {
+    try {
+      const all = await playlist_track_all({ id, limit, offset: 0, cookie: userCookie, timestamp: Date.now() });
+      rawTracks = (all.body && (all.body.songs || all.body.tracks)) || [];
+    } catch (err) {
+      console.warn('[NeteaseRankingTracks] playlist_track_all failed, fallback to detail:', err.message);
+    }
+  }
+
+  if (!rawTracks.length && typeof playlist_detail === 'function') {
+    const detail = await playlist_detail({ id, s: 0, cookie: userCookie, timestamp: Date.now() });
+    const pl = (detail.body && detail.body.playlist) || {};
+    playlistMeta = {
+      id: String(pl.id || id),
+      name: pl.name || '',
+      cover: pl.coverImgUrl || '',
+      trackCount: pl.trackCount || 0,
+      type: 'ranking',
+      provider: 'netease',
+      source: 'netease',
+    };
+    rawTracks = pl.tracks || [];
+  }
+
+  const tracks = rawTracks.map(mapSongRecord).filter(t => t.id).slice(0, limit);
+  if (!playlistMeta.trackCount) playlistMeta.trackCount = tracks.length;
+  if (!playlistMeta.name) {
+    const found = NETEASE_RANKING_FALLBACK.find(item => String(item.id) === id);
+    playlistMeta.name = found && found.name || '网易云排行榜';
+    playlistMeta.cover = playlistMeta.cover || (found && found.cover) || '';
+  }
+  return { provider: 'netease', playlist: playlistMeta, tracks, updatedAt: Date.now() };
 }
 
 function lowSignalText(value) {
@@ -5692,6 +5781,28 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       console.error('[DiscoverHome]', err);
       sendJSON(res, { error: err.message, loggedIn: false, dailySongs: [], playlists: [], podcasts: [] }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/rankings/netease') {
+    try {
+      sendJSON(res, await handleNeteaseRankings());
+    } catch (err) {
+      console.error('[NeteaseRankings]', err);
+      sendJSON(res, { provider: 'netease', error: err.message, rankings: [] }, 500);
+    }
+    return;
+  }
+
+  if (pn === '/api/ranking/netease/tracks') {
+    try {
+      const id = url.searchParams.get('id') || '';
+      const limit = url.searchParams.get('limit') || 60;
+      sendJSON(res, await handleNeteaseRankingTracks(id, limit));
+    } catch (err) {
+      console.error('[NeteaseRankingTracks]', err);
+      sendJSON(res, { provider: 'netease', error: err.message, tracks: [] }, 500);
     }
     return;
   }
