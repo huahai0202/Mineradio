@@ -263,9 +263,12 @@ body.home-wallpaper-preview #canvas-container{filter:none}
 .home-ranking-title{font-size:clamp(32px,4vw,52px);line-height:1.04;font-weight:820;letter-spacing:0;color:rgba(255,255,255,.98);max-width:430px;text-wrap:balance}
 .home-ranking-sub{margin-top:14px;max-width:430px;color:rgba(255,255,255,.58);font-size:13px;line-height:1.6}
 .home-ranking-tabs{grid-column:1 / -1;display:flex;flex-wrap:wrap;align-content:flex-start;gap:7px;padding:2px 2px 4px;overflow:visible}
+.home-ranking-tabs.expanded{max-height:126px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;-ms-overflow-style:none}
+.home-ranking-tabs.expanded::-webkit-scrollbar{display:none}
 .home-ranking-tab{flex:0 0 auto;height:30px;padding:0 12px;border-radius:999px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.045);color:rgba(255,255,255,.56);font-family:inherit;font-size:11px;font-weight:760;cursor:pointer;transition:background .2s,border-color .2s,color .2s,transform .2s;white-space:nowrap}
 .home-ranking-tab:hover{transform:translateY(-1px);color:#fff;background:rgba(255,255,255,.08)}
 .home-ranking-tab.active{color:#fff;border-color:color-mix(in srgb,var(--home-accent) 44%,rgba(255,255,255,.18));background:color-mix(in srgb,var(--home-accent) 16%,rgba(255,255,255,.05));box-shadow:0 10px 26px color-mix(in srgb,var(--home-accent) 12%,transparent)}
+.home-ranking-tab.more{border-color:color-mix(in srgb,var(--home-accent) 36%,rgba(255,255,255,.12));background:color-mix(in srgb,var(--home-accent) 10%,rgba(255,255,255,.04));color:rgba(255,255,255,.78)}
 .home-ranking-cover{position:relative;align-self:stretch;min-height:180px;border-radius:22px;background:linear-gradient(135deg,color-mix(in srgb,var(--home-accent) 45%,#171a20),rgba(8,9,13,.88));background-size:cover;background-position:center;box-shadow:0 24px 68px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.13);overflow:hidden}
 .home-ranking-cover::after{content:'';position:absolute;inset:0;background:linear-gradient(145deg,rgba(255,255,255,.16),transparent 42%,rgba(0,0,0,.44));pointer-events:none}
 .home-ranking-list{grid-column:1 / -1;display:grid;grid-template-columns:1fr;gap:7px;min-height:0;align-content:start;overflow-y:auto;overscroll-behavior:contain;padding-right:2px;scrollbar-width:none;-ms-overflow-style:none}
@@ -2878,7 +2881,8 @@ var homeForcedOpen = false;
 var homeSuppressed = false;
 var homeDiscoverState = { loading: false, loaded: false, loggedIn: false, mode: 'starter', songs: [], playlists: [], podcasts: [], error: '', updatedAt: 0 };
 var homeDiscoverToken = 0;
-var homeRankingState = { loading: false, loaded: false, tracksLoading: false, rankings: [], selectedId: '', selected: null, tracks: [], error: '', updatedAt: 0 };
+var HOME_RANKING_TAB_LIMIT = 12;
+var homeRankingState = { loading: false, loaded: false, tracksLoading: false, rankings: [], selectedId: '', selected: null, tracks: [], error: '', updatedAt: 0, rankingsExpanded: false };
 var homeRankingToken = 0;
 var homeRankingTracksToken = 0;
 var homeVisualPresetActive = false;
@@ -16290,11 +16294,24 @@ function renderHomeRankings() {
         : (homeRankingState.error ? '榜单暂不可用' : ((homeRankingState.tracks || []).length ? (homeRankingState.tracks.length + ' 首可播放') : '选择榜单后载入歌曲')));
   }
   setHomeRankingCover(selected && selected.cover || (homeRankingState.tracks[0] && homeRankingState.tracks[0].cover) || '');
+  var activeRankingId = String(homeRankingState.selectedId || (selected && selected.id) || '');
+  var expanded = !!homeRankingState.rankingsExpanded && rankings.length > HOME_RANKING_TAB_LIMIT;
+  tabs.classList.toggle('expanded', expanded);
+  var visibleRankings = rankings;
+  if (!expanded && rankings.length > HOME_RANKING_TAB_LIMIT) {
+    visibleRankings = rankings.slice(0, HOME_RANKING_TAB_LIMIT);
+    if (activeRankingId && !visibleRankings.some(function(item){ return String(item.id) === activeRankingId; })) {
+      var activeRanking = rankings.find(function(item){ return String(item.id) === activeRankingId; });
+      if (activeRanking) visibleRankings = visibleRankings.slice(0, Math.max(0, HOME_RANKING_TAB_LIMIT - 1)).concat([activeRanking]);
+    }
+  }
   tabs.innerHTML = rankings.length
-    ? rankings.slice(0, 12).map(function(item){
-      var active = String(item.id) === String(homeRankingState.selectedId || (selected && selected.id) || '');
+    ? visibleRankings.map(function(item){
+      var active = String(item.id) === activeRankingId;
       return '<button class="home-ranking-tab' + (active ? ' active' : '') + '" type="button" onclick="selectHomeRanking(&quot;' + escHtml(String(item.id)) + '&quot;)">' + escHtml(item.name || '榜单') + '</button>';
-    }).join('')
+    }).join('') + (rankings.length > HOME_RANKING_TAB_LIMIT
+      ? '<button class="home-ranking-tab more" type="button" onclick="toggleHomeRankingTabs()">' + (expanded ? '收起榜单' : ('全部榜单 ' + rankings.length)) + '</button>'
+      : '')
     : '<button class="home-ranking-tab active" type="button">网易云榜单</button>';
   if (homeRankingState.loading || homeRankingState.tracksLoading) {
     list.innerHTML = '<div class="home-ranking-empty">正在载入网易云榜单</div>';
@@ -16368,6 +16385,10 @@ function selectHomeRanking(id) {
   homeRankingState.error = '';
   renderHomeRankings();
   loadHomeRankingTracks(true);
+}
+function toggleHomeRankingTabs() {
+  homeRankingState.rankingsExpanded = !homeRankingState.rankingsExpanded;
+  renderHomeRankings();
 }
 async function loadHomeRankingTracks(force) {
   var selected = currentHomeRanking();
